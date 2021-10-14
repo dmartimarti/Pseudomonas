@@ -1,0 +1,32 @@
+#PBS -l walltime=24:0:0
+#PBS -l select=1:ncpus=32:mem=6gb
+
+# Load modules for any applications
+
+module load anaconda3/personal
+
+
+SEQS=TruSeq3-PE.fa
+SOURCE=/rds/general/project/lms-cabreiro-raw/live/211013_VH00504_11_AAAMNH7M5/Unaligned
+WORK=$HOME/Pseudomonas
+
+mkdir $WORK/trimm_seqs
+
+for R1 in $SOURCE/*R1*
+do   	
+   R2=${R1//R1_001.fastq.gz/R2_001.fastq.gz}
+
+   cp $R1 $TMPDIR
+   cp $R2 $TMPDIR
+   cp $HOME/Pangenomic_genomes/sequencing/raw/210401_NB501045_0331_AHYK7HBGXH/Unaligned/$SEQS $TMPDIR
+
+   R1paired=${R1//.fastq.gz/_paired.fastq.gz}
+   R1unpaired=${R1//.fastq.gz/_unpaired.fastq.gz}
+   R2paired=${R2//.fastq.gz/_paired.fastq.gz}
+   R2unpaired=${R2//.fastq.gz/_unpaired.fastq.gz}
+   trimmomatic PE -threads 32 -phred33 $R1 $R2 $R1paired $R1unpaired $R2paired $R2unpaired \
+   ILLUMINACLIP:TruSeq3-PE.fa:4:30:10 LEADING:10 TRAILING:10 SLIDINGWINDOW:5:20 MINLEN:95
+
+done
+
+mv $SOURCE/*paired* $WORK/trimm_seqs

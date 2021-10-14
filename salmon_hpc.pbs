@@ -1,0 +1,35 @@
+#PBS -l walltime=48:0:0
+#PBS -l select=1:ncpus=16:mem=32gb
+
+# Load modules for any applications
+
+
+module load anaconda3/personal
+source activate salmon_final
+
+SOURCE=$WORK/Pseudomonas/trimm_seqs
+WORK=$HOME/Pseudomonas
+
+for R1paired in $SOURCE/*R1_001_paired*
+do  
+	# generate output names
+	tmp=$(echo "$R1paired" | awk -F '_' '{print $3}' )
+    newfname=${tmp}
+
+    # get variables for each file within sample
+	R2paired=${R1paired//R1_001_paired.fastq.gz/R2_001_paired.fastq.gz}
+	R1unpaired=${R1paired//R1_001_paired.fastq.gz/R1_001_unpaired.fastq.gz}   	
+	R2unpaired=${R1paired//R1_001_paired.fastq.gz/R2_001_unpaired.fastq.gz}
+
+	# copy files into temp dir to work with them
+    cp $R1paired $TMPDIR
+    cp $R2paired $TMPDIR
+    cp $R1unpaired $TMPDIR
+    cp $R2unpaired $TMPDIR
+
+    # main instructions
+    salmon quant -i celegans_index -l A -1 $WORK/$R1paired -2 $WORK/$R2paired  \
+    	-r $R1unpaired $R2unpaired \
+    	-p 16 --validateMappings --gcBias -o quants/$newfname
+
+done
