@@ -13,7 +13,7 @@ WORK=$HOME/Pseudomonas
 for R1paired in $SOURCE/*R1_001_paired*
 do  
 	# generate output names
-	tmp=$(echo "$R1paired" | awk -F '_' '{print $3}' )
+	tmp=$(echo "$R1paired" | awk -F '_' '{print $4}' )
     newfname=${tmp}
 
     # get variables for each file within sample
