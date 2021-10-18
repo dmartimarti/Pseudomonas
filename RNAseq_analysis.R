@@ -477,6 +477,134 @@ dev.copy2pdf(device = cairo_pdf,
 
 
 
+### Exploratory plots/analysis ############################# 
 
+# barplot that shows the % of DE genes in the 4 main comparisons
+results.complete %>%
+  dplyr::filter(!is.na(padj)) %>%
+  mutate(Sig = ifelse(padj < 0.05, 1, 0)) %>%
+  group_by(Contrast, Sig) %>%
+  summarise(N = n()) %>%
+  mutate(Total = sum(N),
+         Fraction = round((N/Total)*100, 2)) %>%
+  dplyr::filter(Sig == 1) %>%
+  ggplot(aes(x = fct_reorder(Contrast, Fraction, .desc = TRUE), y = Fraction)) +
+  geom_bar(stat = 'identity', width = 0.5, aes(fill = Contrast)) +
+  scale_fill_brewer(palette = "Dark2") + 
+  scale_y_continuous(limits = c(0, 50), 
+                     breaks = c(0, 15, 30, 50),
+                     expand = expansion(mult = c(0, 0.05))) +
+  geom_text(aes(label = Fraction, y = (Fraction + 1))) +
+  labs(y = '% of DE genes',
+       x = 'Condition') +
+  guides(fill = 'none') +
+  theme_cowplot(14)
+
+
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'DEgenes_barplot.pdf'),
+             height = 8, width = 8, useDingbats = FALSE)
+
+
+
+
+# barplot that shows the % of DE genes in the 4 main comparisons
+
+
+results.complete %>%
+  dplyr::filter(!is.na(padj)) %>%
+  mutate(Sig = ifelse(padj < 0.05, 1, 0)) %>%
+  group_by(Contrast_description, Contrast, Direction, Sig) %>%
+  summarise(N = n()) %>%
+  group_by(Contrast_description, Contrast) %>%
+  mutate(Total = sum(N),
+         Fraction = round((N/Total)*100,1)) %>%
+  group_by(Contrast_description, Contrast,  Sig) %>%
+  arrange(desc(Direction)) %>%
+  mutate(label_ypos = cumsum(Fraction)) %>%
+  dplyr::filter(Sig == 1) %>%
+  ggplot(aes(x = fct_reorder(Contrast, Fraction, .desc = TRUE), y = Fraction, fill = Direction)) +
+  geom_bar(stat = 'identity', width = 0.5) +
+  geom_text(aes(y = label_ypos, label = Fraction), 
+            vjust = 1.6, size = 3.5) +
+  scale_fill_brewer(palette = "Dark2") + 
+  # scale_x_discrete(limits = c('N2', 'skpo', 'OP50', 'OG1RF')) +	
+  scale_y_continuous(limits = c(0, 50), 
+                     breaks = c(0, 25, 50),
+                     expand = expansion(mult = c(0, 0.05))) +
+  labs(y = '% of DE genes',
+       x = 'Condition') +
+  theme_cowplot(14)
+  
+
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'DEgenes_direction_barplot.pdf'),
+             height = 8, width = 8, useDingbats = FALSE)
+
+
+
+
+
+# # # # # # # # # # # # # # # # # # # # #
+### Scatter plots ########################
+# # # # # # # # # # # # # # # # # # # # #
+
+# to plot regression info 
+ggplotRegression = function(fit){
+  
+  require(ggplot2)
+  
+  ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + 
+    geom_point() +
+    stat_smooth(method = "lm", col = "red") +
+    labs(title = paste("Adj R2 = ",signif(summary(fit)$adj.r.squared, 5),
+                       "Intercept =",signif(fit$coef[[1]],5 ),
+                       " Slope =",signif(fit$coef[[2]], 5),
+                       " P =",signif(summary(fit)$coef[2,4], 5)))
+}
+
+
+## WT vs WTN 
+
+cosa = results.complete %>%
+  filter(Contrast %in% c('WT', 'WTN'))
+
+gns = cosa %>% filter(padj <=1) %>% select(gene_name) %>% unique %>% t %>% as.character
+
+cosa = cosa %>% 
+  filter(gene_name %in% gns) %>%
+  select(Contrast, gene_name, log2FoldChange) %>%
+  pivot_wider(names_from = Contrast, values_from = log2FoldChange) %>%
+  data.frame
+
+# ggplotRegression(lm(skpo ~ N2, data = cosa)) + theme_classic() +
+#   ylim(-10,10) + 
+#   xlim(-10,10)
+
+model = summary(lm(cosa[,3] ~ cosa[,2]))
+stats = paste0('y = ', signif(model$coef[[2]], 5) , ' * x + (', signif(model$coef[[1]], 5), '), \n R2 = ', signif(model$adj.r.squared, 5), ' P-value < 0.0001')
+
+# cosa = cosa %>%
+#   mutate(N2 = ifelse(N2 > 5, 4.99, N2),
+#          N2 = ifelse(N2 < -5, -4.99, N2),
+#          skpo = ifelse(skpo > 5, 4.99, skpo),
+#          skpo = ifelse(skpo < -5, -4.99, skpo))
+
+ggplot(cosa, aes(x = WT, y = WTN)) +
+  geom_smooth(method = lm) +
+  geom_point(alpha = 0.5) +
+  ylim(-5,5) +
+  xlim(-5,5) +
+  geom_text(x = -3, y = 4, label = stats) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  # labs(x = expression(paste('N2 on', italic(' E. faecalis'),'/N2 on', italic(' E. coli'), '\n (Log' ['2'], 'FC)')),
+  #      y = expression(paste(italic('skpo-1'),' on', italic(' E. faecalis'),'/',italic('skpo-1'),' on', italic(' E. coli'), '\n (Log' ['2'], 'FC)'))) +
+  theme_light()
+
+
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'scatter_WT_vs_WTN.pdf'),
+             height = 6, width = 8, useDingbats = FALSE)
 
 
