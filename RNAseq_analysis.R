@@ -33,6 +33,11 @@ library(cowplot)
 
 samples = read.delim("sampleInfo.txt") 
 
+samples = samples %>% 
+  mutate(Batch = Replicate,
+         Batch = as.factor(Batch),
+         Sample = as.factor(Sample))
+
 dir = getwd()
 rownames(samples) = samples$Name
 
@@ -85,13 +90,20 @@ txi = tximport(files, type = "salmon", tx2gene = tx2gene)
 
 
 
+
+# DESeq2 analysis ---------------------------------------------------------
+
+
+
 ### starting analysis with DESeq2
 # create DESeq data type to be analysed
-ddsTxi = DESeqDataSetFromTximport(txi, colData = samples, design = ~ Sample)
+# let's introduce a batch effect just in case
+ddsTxi = DESeqDataSetFromTximport(txi, colData = samples, 
+                                  design = ~ Batch + Sample)
 
 # # prefilter, but that might not be necessary
-# keep = rowSums(counts(ddsTxi)) >= 10
-# ddsTxi = ddsTxi[keep,]
+keep = rowSums(counts(ddsTxi)) >= 10
+ddsTxi = ddsTxi[keep,]
 
 ddsTxi$Sample = relevel(ddsTxi$Sample, ref = "WT_0")
 
@@ -250,30 +262,218 @@ dev.copy2pdf(device = cairo_pdf,
 
 
 
-# plot!
 
-ell = ell %>% 
-  mutate(Metformin = factor(Metformin, levels = c(0,50)))
+# Stats MAIN --------------------------------------------------------------
 
-pcaData %>% 
-  as_tibble() %>% 
-  mutate(Metformin = factor(Metformin)) %>% 
-  ggplot(aes(x = PC1, y = PC2, color = Bacteria, group = interaction(Bacteria, Metformin, Media))) + 
-  geom_point(size = 3, show.legend = NA, alpha = 0.5) + 
-  geom_path(data = ell, aes(x = x, y = y, group = interaction(Bacteria, Metformin, Media)), 
-            size = 1) +
-  geom_polygon(data = ell, aes(x = x, y = y, group = interaction(Bacteria, Metformin, Media),
-                               fill = Metformin , linetype=Metformin), size = 1, alpha = 0.3) +
-  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
-  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
-  theme_classic() +
-  theme(plot.title = element_text(hjust = 0.5),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.x = element_text(size = 13, colour = 'black'),
-        axis.text.y = element_text(size = 13, colour = 'black')) 
+# get results and tidy it
+res = results(dds) 
 
 
+# results with different shape of contrasts, tidy
+
+# Wt50 - Wt0
+res.WT = results(dds,   contrast = c("Sample", "WT_50" , "WT_0"))  
+res.WT = lfcShrink(dds, contrast = c("Sample", "WT_50" , "WT_0"), res = res.WT, type = 'ashr')
+
+# WTN50 - WTN0
+res.WTN = results(dds,  contrast = c("Sample",  "WTN_50", "WTN_0")) 
+res.WTN = lfcShrink(dds, contrast = c("Sample",  "WTN_50", "WTN_0"), res = res.WTN, type = 'ashr')
+
+# bioF: B_50 - B_0
+res.B = results(dds,  contrast = c("Sample",  "B_50", "B_0"))   
+res.B = lfcShrink(dds, contrast = c("Sample", "B_50", "B_0"), res = res.B, type = 'ashr')
+
+# B_0 - WT_0
+res.B_WT = results(dds, contrast = c("Sample",   "B_0", "WT_0")) 
+res.B_WT = lfcShrink(dds, contrast = c("Sample", "B_0", "WT_0"), res = res.B_WT, type = 'ashr')
+
+# G_0 - WT_0
+res.G_WT = results(dds, contrast = c("Sample",   "G_0", "WT_0")) 
+res.G_WT = lfcShrink(dds, contrast = c("Sample", "G_0", "WT_0"), res = res.G_WT, type = 'ashr')
+
+# B_50 - G_0
+res.Bmet_G = results(dds, contrast = c("Sample",   "B_50", "G_0")) 
+res.Bmet_G = lfcShrink(dds, contrast = c("Sample", "B_50", "G_0"), res = res.Bmet_G, type = 'ashr')
+
+# B_50 - WT_0
+res.Bmet_WT = results(dds, contrast = c("Sample",   "B_50", "WT_0")) 
+res.Bmet_WT = lfcShrink(dds, contrast = c("Sample", "B_50", "WT_0"), res = res.Bmet_WT, type = 'ashr')
+
+
+
+#### tidying the results #####
+# Wt50 - Wt0
+res.WT.tidy = as_tibble(res.WT, rownames = 'gene_id') %>% mutate(
+      p_adj_stars = gtools::stars.pval(padj),
+      Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+      Contrast = 'WT',
+      Media = 'LB/NGM',
+      Target = 'WT_50',
+      Reference = 'WT_0',
+      Contrast_description = 'Comparison of WT (+- Metformin) in LB/NGM') %>%
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+# WTN50 - WTN0
+res.WTN.tidy = as_tibble(res.WTN, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'WTN',
+  Media = 'NGM',
+  Target = 'WTN_50',
+  Reference = 'WTN_0',
+  Contrast_description = 'Comparison of WT (+- Metformin) in NGM') %>%
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+# bioF: B_50 - B_0
+res.B.tidy = as_tibble(res.B, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'bioF',
+  Media = 'LB/NGM',
+  Target = 'B_50',
+  Reference = 'B_0',
+  Contrast_description = 'Comparison of bioF (+- Metformin) in LB/NGM') %>%
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+
+# B_0 - WT_0
+res.B_WT.tidy = as_tibble(res.B_WT, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'B_WT',
+  Media = 'LB/NGM',
+  Target = 'B_0',
+  Reference = 'WT_0',
+  Contrast_description = 'Comparison of bioF_0 vs WT_0 in LB/NGM') %>%
+  # mutate(entrezid = unlist(entrezid)) %>% 
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+
+# G_0 - WT_0
+res.G_WT.tidy = as_tibble(res.G_WT, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'G_WT',
+  Media = 'LB/NGM',
+  Target = 'G_0',
+  Reference = 'WT_0',
+  Contrast_description = 'Comparison of gacA_0 vs WT_0 in LB/NGM') %>% 
+  # mutate(entrezid = unlist(entrezid)) %>% 
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+
+# B_50 - G_0
+res.Bmet_G.tidy = as_tibble(res.Bmet_G, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'Bmet_G',
+  Media = 'LB/NGM',
+  Target = 'B_50',
+  Reference = 'G_0',
+  Contrast_description = 'Comparison of bioF_50 vs gacA_0 in LB/NGM') %>%
+  # mutate(entrezid = unlist(entrezid)) %>% 
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+
+# B_50 - WT_0
+res.Bmet_WT.tidy = as_tibble(res.Bmet_WT, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'Bmet_WT',
+  Media = 'LB/NGM',
+  Target = 'B_50',
+  Reference = 'WT_0',
+  Contrast_description = 'Comparison of WT_0 vs bioF_50 in LB/NGM') %>%
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+
+
+
+
+
+results.complete = res.WT.tidy %>% rbind(res.WTN.tidy, res.B.tidy, res.B_WT.tidy,
+                                         res.G_WT.tidy,
+                                         res.Bmet_G.tidy, res.Bmet_WT.tidy)
+
+
+
+# write results in excel files
+list_of_datasets = list('WT_LB/NGM' = res.WT.tidy, 
+                        'WT_NGM' = res.WTN.tidy, 
+                        'bioF_LB/NGM' = res.B.tidy,
+                        'bioF_0vsWT_0' = res.B_WT.tidy,
+                        'gacA_0vsWT_0' = res.G_WT.tidy,
+                        'bioF_50vsgacA_0' = res.Bmet_G.tidy,
+                        'WT_0vsbioF_50' = res.Bmet_WT.tidy)
+
+
+write.xlsx(list_of_datasets, here('summary', 'complete_stats.xlsx'),
+           colNames = T, rowNames = F)
+
+# write.xlsx(res.WT.tidy, here('summary', 'stats.xlsx'),
+#            colNames = T, rowNames = F) 
+
+write_csv(results.complete, here('summary', 'complete_stats.csv'))
+
+
+
+
+#### MA plots ####
+
+
+### MA plots for every comparison
+plotMA(res.WT,  ylim=c(-3,3),  alpha = 0.05)
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'MAplot_WT.pdf'),
+             height = 8, width = 11, useDingbats = FALSE)
+
+plotMA(res.WTN,  ylim=c(-3,3),  alpha = 0.05)
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'MAplot_WTN.pdf'),
+             height = 8, width = 11, useDingbats = FALSE)
+
+
+plotMA(res.B,  ylim=c(-3,3),  alpha = 0.05)
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'MAplot_B.pdf'),
+             height = 8, width = 11, useDingbats = FALSE)
+
+
+plotMA(res.B_WT,  ylim=c(-3,3),  alpha = 0.05)
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'MAplot_B_WT.pdf'),
+             height = 8, width = 11, useDingbats = FALSE)
+
+plotMA(res.G_WT,  ylim=c(-3,3),  alpha = 0.05)
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'MAplot_G_WT.pdf'),
+             height = 8, width = 11, useDingbats = FALSE)
+
+
+plotMA(res.Bmet_G,  ylim=c(-3,3),  alpha = 0.05)
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'MAplot_Bmet_G.pdf'),
+             height = 8, width = 11, useDingbats = FALSE)
+
+
+plotMA(res.Bmet_WT,  ylim=c(-3,3),  alpha = 0.05)
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'MAplot_Bmet_WT.pdf'),
+             height = 8, width = 11, useDingbats = FALSE)
 
 
 
