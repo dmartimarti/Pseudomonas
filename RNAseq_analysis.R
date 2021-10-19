@@ -110,14 +110,14 @@ ddsTxi$Sample = relevel(ddsTxi$Sample, ref = "WT_0")
 # run the Differential Expression Analysis
 # design(ddsTxi) <- formula(~ Bacteria + Worm)
 dds = DESeq(ddsTxi)
-
+  
 
 ### tidy results
 # dds.tidy = tidy(ddsTxi, colData = samples$Sample)
 gene_counts = counts(dds, normalized = TRUE)
 gene_list = rownames(gene_counts)
 gene_counts = gene_counts %>% 
-  cbind(gene_list,.) %>% tbl_df()
+  cbind(gene_list,.) %>% as_tibble()
 
 gene_counts = gene_counts %>% 
   gather(Name, counts, W0L1:G0L4) %>% 
@@ -131,6 +131,32 @@ gene_counts = gene_counts %>%
   mutate(Sample = factor(Sample, levels = c('WT_0', 'WT_50', 'WTN_0', 'WTN_50',
                                             'B_0', 'B_50', 'G_0'))) # refactor levels to show them in this order in the plots
 
+
+write_csv(gene_counts, here('summary', 'gene_counts.csv'))
+
+
+## correct for batch effect 
+## this way we can show the plots in a more nicer way
+
+gene_counts_norm = limma::removeBatchEffect(counts(dds, normalized = TRUE), dds$batch) 
+gene_list = rownames(gene_counts_norm)
+gene_counts_norm = gene_counts_norm %>% 
+  cbind(gene_list,.) %>% as_tibble()
+
+gene_counts_norm = gene_counts_norm %>% 
+  gather(Name, counts, W0L1:G0L4) %>% 
+  dplyr::select(gene_id = gene_list, Name, counts) %>%
+  mutate(Name = as.factor(Name)) %>%
+  left_join(tbl_df(samples), by = 'Name') %>%
+  mutate(counts = as.double(counts),
+         gene_id = as.factor(gene_id),
+         Replicate = as.factor(Replicate)) %>% 
+  left_join(info) %>%
+  mutate(Sample = factor(Sample, levels = c('WT_0', 'WT_50', 'WTN_0', 'WTN_50',
+                                            'B_0', 'B_50', 'G_0'))) # refactor levels to show them in this order in the plots
+
+
+write_csv(gene_counts_norm, here('summary', 'gene_counts_batch_normalized.csv'))
 
 
 
@@ -260,6 +286,71 @@ dev.copy2pdf(device = cairo_pdf,
              height = 8, width = 9, useDingbats = FALSE)
 
 
+
+pcaData %>%
+  mutate(replicate = str_sub(name, -1),
+         replicate = factor(replicate, levels = c(1,2,3,4))) %>% 
+  ggplot(aes(x = PC1, y = PC2, color = Groups)) + 
+  geom_point(aes(shape = replicate), size = 3, show.legend = NA, alpha = 0.5) + 
+  geom_path(data = ell, aes(x = x, y = y, linetype = Groups), size = 1) +
+  geom_polygon(data = ell, aes(x = x, y = y, fill = Groups), size = 1, alpha = 0.3) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  theme_cowplot(14) 
+  
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'PCA_main_rld_replicates.pdf'),
+             height = 8, width = 9, useDingbats = FALSE)
+
+
+#### limma batch effect ####
+
+dds$batch = factor(rep(c("1", "2", "3", "4")))
+vsd = varianceStabilizingTransformation(dds)
+plotPCA(vsd, "batch")
+
+assay(vsd) = limma::removeBatchEffect(assay(vsd), vsd$batch)    
+plotPCA(vsd, intgroup = c("Sample"))
+
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'PCA_main_vsd_batch_effect.pdf'),
+             height = 8, width = 9, useDingbats = FALSE)
+
+# custom PCA plot
+
+pcaData = plotPCA(vsd, intgroup = c("Bacteria", "Metformin", "Media"), returnData = TRUE)
+pcaData
+
+names(pcaData) = c('PC1', 'PC2', 'Groups', 'Bacteria', 'Metformin','Media', 'name')
+
+# get ellipses based on the correlation
+getellipse = function(x, y, sc = 1) {
+  as.data.frame(ellipse::ellipse(cor(x, y),
+                                 scale = c(sd(x) * sc, sd(y) * sc),
+                                 centre = c(mean(x), mean(y))))
+}
+
+
+
+# get info for the ellipses
+# ell = pcaData %>% group_by(Bacteria, Metformin, Media) %>% do(getellipse(.$PC1, .$PC2, 1)) %>% data.frame
+ell = pcaData %>% group_by(Groups) %>% do(getellipse(.$PC1, .$PC2, 1)) %>% data.frame
+# % of variable explained by PC1 and PC2
+percentVar = round(100 * attr(pcaData, "percentVar"))
+
+# plot!
+pcaData %>% 
+  ggplot(aes(x = PC1, y = PC2, color = Groups)) + 
+  geom_point(size = 3, show.legend = NA, alpha = 0.5) + 
+  geom_path(data = ell, aes(x = x, y = y, linetype = Groups), size = 1) +
+  geom_polygon(data = ell, aes(x = x, y = y, fill = Groups), size = 1, alpha = 0.3) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  theme_cowplot(14) 
+
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'PCA_main_vld_batch_effect.pdf'),
+             height = 8, width = 9, useDingbats = FALSE)
 
 
 
@@ -542,11 +633,111 @@ dev.copy2pdf(device = cairo_pdf,
              height = 8, width = 8, useDingbats = FALSE)
 
 
+#### # # # ## # # ## # 
+#### Gene boxplots ####
+#### # # # ## # # ## # 
+
+
+## ploting some data
+###
+# quick check on a couple genes of interest
+# WBGene00045401 = eol-1
+# WBGene00018997 = F57B9.3
+gns = c('WBGene00045401', 'WBGene00018997')
+
+# acdh-1 and acdh-2
+# WBGene00016943 = acdh-1
+# WBGene00015894 = acdh-2
+gns = c('WBGene00016943', 'WBGene00015894')
+
+# WBGene00009221 = acs-2
+# WBGene00010759 = cysl-2 
+
+gns = c('WBGene00009221', 'WBGene00010759')
+
+
+# WBGene00020343 = acs-3
+# WBGene00003623 = nhr-25
+gns = c('WBGene00016943','WBGene00009221', 'WBGene00020343', 'WBGene00003623')
+
+
+
+# for Filipe, for QQ review
+# hlh-30
+gns = c('WBGene00020930')
+
+# fmo-2
+gns = c('WBGene00001477')
+
+# ftn-1
+gns = c('WBGene00001500')
+
+# hif-1
+gns = c('WBGene00001851')
+
+# sqst-1
+gns = c('WBGene00011737')
+
+# fat-7
+gns = c('WBGene00001399')
+
+# fat-1
+gns = c('WBGene00001393')
+
+# cbp-1 (PE300 ortholog)
+gns = c('WBGene00000366')
+
+# nol-6 (nucleolar protein 6)
+gns = c('WBGene00000608')
+
+# random 
+gns = c('WBGene00000782')
+
+gene_counts%>%
+  dplyr::filter(gene_id %in% gns) %>%
+  ggplot(aes(y = counts, x = Sample)) +
+  geom_boxplot(aes(fill = Sample),
+               outlier.colour = NULL,
+               outlier.shape = NA) +
+  geom_point(position = position_jitter(width = 0.2)) +
+  facet_wrap(~gene_name, scales = 'free_y') +
+  labs(x = 'Sample',
+       y = 'Normalised counts') +
+  theme_cowplot(15) +
+  panel_border() +
+  theme(axis.text.x = element_text(angle=45, hjust = 1))
+
+# quartz.save(file = here('summary', 'nol-6.pdf'),
+#             type = 'pdf', dpi = 300, height = 7, width = 6)
+# 
+
+
+
+# # # # # # # # # # # # # # # # # #
+### IMPORTANT: gene directions ####
+# # # # # # # # # # # # # # # # # #
+
+# positive threshold
+pos = 0
+# negative threshold
+neg = -0
+
+WT.gns.up = res.WT.tidy %>% 
+  filter(padj <= 0.05, log2FoldChange >= pos) %>% 
+  pull(gene_id)
+WT.gns.down = res.WT.tidy %>% 
+  filter(padj <= 0.05, log2FoldChange <= neg) %>% 
+  pull(gene_id)
+write.table(c('Wormbase.ID', unique(WT.gns.up)), 
+            here('summary/gene_list', 'WT_UP_genes.txt'), quote = FALSE, col.names = F, row.names = F)
+write.table(c('Wormbase.ID', unique(WT.gns.down)), 'WT_DOWN_genes.txt', quote = FALSE, col.names = F, row.names = F)
+
+
 
 
 
 # # # # # # # # # # # # # # # # # # # # #
-### Scatter plots ########################
+### Scatter plots #######################
 # # # # # # # # # # # # # # # # # # # # #
 
 # to plot regression info 
