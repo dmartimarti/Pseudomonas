@@ -27,6 +27,8 @@ library(openxlsx)
 library(viridis)
 library(cowplot)
 
+theme_set(theme_cowplot())
+
 
 # the first step we need to do is to read the sample file, and parse it with 
 # the data produced by salmon to get tables ready to be analysed by DESeq2
@@ -390,6 +392,11 @@ res.Bmet_G = lfcShrink(dds, contrast = c("Sample", "B_50", "G_0"), res = res.Bme
 res.Bmet_WT = results(dds, contrast = c("Sample",   "B_50", "WT_0")) 
 res.Bmet_WT = lfcShrink(dds, contrast = c("Sample", "B_50", "WT_0"), res = res.Bmet_WT, type = 'ashr')
 
+# WTN50 - WT0
+res.WTNmet_WT = results(dds,  contrast = c("Sample",  "WTN_50", "WT_0")) 
+res.WTNmet_WT = lfcShrink(dds, contrast = c("Sample",  "WTN_50", "WT_0"), res = res.WTNmet_WT, type = 'ashr')
+
+
 
 
 #### tidying the results #####
@@ -486,7 +493,21 @@ res.Bmet_WT.tidy = as_tibble(res.Bmet_WT, rownames = 'gene_id') %>% mutate(
   Media = 'LB/NGM',
   Target = 'B_50',
   Reference = 'WT_0',
-  Contrast_description = 'Comparison of WT_0 vs bioF_50 in LB/NGM') %>%
+  Contrast_description = 'Comparison of bioF_50 vs WT_0 in LB/NGM') %>%
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+
+# WTN50 - WT0
+res.WTNmet_WT.tidy = as_tibble(res.WTNmet_WT, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'Bmet_WT',
+  Media = 'LB/NGM',
+  Target = 'B_50',
+  Reference = 'WT_0',
+  Contrast_description = 'Comparison of WTN50 vs WT_0 in LB/NGM') %>%
   left_join(info) %>%
   mutate(entrezid = unlist(entrezid)) %>% 
   dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
@@ -494,9 +515,8 @@ res.Bmet_WT.tidy = as_tibble(res.Bmet_WT, rownames = 'gene_id') %>% mutate(
 
 
 
-
-
-results.complete = res.WT.tidy %>% rbind(res.WTN.tidy, res.B.tidy, res.B_WT.tidy,
+results.complete = res.WT.tidy %>% rbind(res.WTN.tidy,res.WTNmet_WT.tidy, 
+                                         res.B.tidy, res.B_WT.tidy,
                                          res.G_WT.tidy,
                                          res.Bmet_G.tidy, res.Bmet_WT.tidy)
 
@@ -505,6 +525,7 @@ results.complete = res.WT.tidy %>% rbind(res.WTN.tidy, res.B.tidy, res.B_WT.tidy
 # write results in excel files
 list_of_datasets = list('WT_LB/NGM' = res.WT.tidy, 
                         'WT_NGM' = res.WTN.tidy, 
+                        'WTNmet_WT' = res.WTNmet_WT.tidy,
                         'bioF_LB/NGM' = res.B.tidy,
                         'bioF_0vsWT_0' = res.B_WT.tidy,
                         'gacA_0vsWT_0' = res.G_WT.tidy,
@@ -513,10 +534,8 @@ list_of_datasets = list('WT_LB/NGM' = res.WT.tidy,
 
 
 write.xlsx(list_of_datasets, here('summary', 'complete_stats.xlsx'),
-           colNames = T, rowNames = F)
+           colNames = T, rowNames = F, overwrite = TRUE)
 
-# write.xlsx(res.WT.tidy, here('summary', 'stats.xlsx'),
-#            colNames = T, rowNames = F) 
 
 write_csv(results.complete, here('summary', 'complete_stats.csv'))
 
@@ -533,6 +552,11 @@ dev.copy2pdf(device = cairo_pdf,
              height = 8, width = 11, useDingbats = FALSE)
 
 plotMA(res.WTN,  ylim=c(-3,3),  alpha = 0.05)
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'MAplot_WTNmet_WT.pdf'),
+             height = 8, width = 11, useDingbats = FALSE)
+
+plotMA(res.WTNmet_WT,  ylim=c(-3,3),  alpha = 0.05)
 dev.copy2pdf(device = cairo_pdf,
              file = here('summary', 'MAplot_WTN.pdf'),
              height = 8, width = 11, useDingbats = FALSE)
