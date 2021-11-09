@@ -26,6 +26,7 @@ library(ComplexHeatmap)
 library(openxlsx)
 library(viridis)
 library(cowplot)
+library(glue)
 
 theme_set(theme_cowplot())
 
@@ -125,7 +126,7 @@ gene_counts = gene_counts %>%
   gather(Name, counts, W0L1:G0L4) %>% 
   dplyr::select(gene_id = gene_list, Name, counts) %>%
   mutate(Name = as.factor(Name)) %>%
-  left_join(tbl_df(samples), by = 'Name') %>%
+  left_join(as_tibble(samples), by = 'Name') %>%
   mutate(counts = as.double(counts),
          gene_id = as.factor(gene_id),
          Replicate = as.factor(Replicate)) %>% 
@@ -149,7 +150,7 @@ gene_counts_norm = gene_counts_norm %>%
   gather(Name, counts, W0L1:G0L4) %>% 
   dplyr::select(gene_id = gene_list, Name, counts) %>%
   mutate(Name = as.factor(Name)) %>%
-  left_join(tbl_df(samples), by = 'Name') %>%
+  left_join(as_tibble(samples), by = 'Name') %>%
   mutate(counts = as.double(counts),
          gene_id = as.factor(gene_id),
          Replicate = as.factor(Replicate)) %>% 
@@ -392,10 +393,20 @@ res.Bmet_G = lfcShrink(dds, contrast = c("Sample", "B_50", "G_0"), res = res.Bme
 res.Bmet_WT = results(dds, contrast = c("Sample",   "B_50", "WT_0")) 
 res.Bmet_WT = lfcShrink(dds, contrast = c("Sample", "B_50", "WT_0"), res = res.Bmet_WT, type = 'ashr')
 
+
 # WTN50 - WT0
 res.WTNmet_WT = results(dds,  contrast = c("Sample",  "WTN_50", "WT_0")) 
 res.WTNmet_WT = lfcShrink(dds, contrast = c("Sample",  "WTN_50", "WT_0"), res = res.WTNmet_WT, type = 'ashr')
 
+
+
+# Wt0 - WtN0 (LB effect w/o metformin)
+res.NGM = results(dds,   contrast = c("Sample", "WT_0" , "WTN_0"))  
+res.NGM = lfcShrink(dds, contrast = c("Sample", "WT_0" , "WTN_0"), res = res.NGM, type = 'ashr')
+
+# WT50 - WTN50 (LB effect with metformin)
+res.NGM_met = results(dds,  contrast = c("Sample",  "WT_50", "WTN_50")) 
+res.NGM_met = lfcShrink(dds, contrast = c("Sample",  "WT_50", "WTN_50"), res = res.NGM_met, type = 'ashr')
 
 
 
@@ -498,27 +509,54 @@ res.Bmet_WT.tidy = as_tibble(res.Bmet_WT, rownames = 'gene_id') %>% mutate(
   mutate(entrezid = unlist(entrezid)) %>% 
   dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
 
-
 # WTN50 - WT0
 res.WTNmet_WT.tidy = as_tibble(res.WTNmet_WT, rownames = 'gene_id') %>% mutate(
   p_adj_stars = gtools::stars.pval(padj),
   Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
-  Contrast = 'Bmet_WT',
+  Contrast = 'WTNmet_WT',
   Media = 'LB/NGM',
-  Target = 'B_50',
+  Target = 'WTN_50',
   Reference = 'WT_0',
-  Contrast_description = 'Comparison of WTN50 vs WT_0 in LB/NGM') %>%
+  Contrast_description = 'Comparison of WTN50 vs WT_0') %>%
   left_join(info) %>%
   mutate(entrezid = unlist(entrezid)) %>% 
   dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
 
 
+# Wt0 - WtN0 (LB effect w/o metformin)
+res.NGM.tidy = as_tibble(res.NGM, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'NGM_0',
+  Media = 'LB/NGM, NGM',
+  Target = 'WT_0',
+  Reference = 'WtN_0',
+  Contrast_description = 'Comparison of media w/o metformin (WT0 - WTN0)') %>%
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
 
 
+# WT50 - WTN50 (LB effect with metformin)
+res.NGM_met.tidy = as_tibble(res.NGM_met, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'NGM_50',
+  Media = 'LB/NGM, NGM',
+  Target = 'WT_50',
+  Reference = 'WtN_50',
+  Contrast_description = 'Comparison of media with metformin (WT0 - WTN0)') %>%
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+
+# gather all results
 results.complete = res.WT.tidy %>% rbind(res.WTN.tidy,res.WTNmet_WT.tidy, 
                                          res.B.tidy, res.B_WT.tidy,
                                          res.G_WT.tidy,
-                                         res.Bmet_G.tidy, res.Bmet_WT.tidy)
+                                         res.Bmet_G.tidy, res.Bmet_WT.tidy,
+                                         res.NGM.tidy, res.NGM_met.tidy)
 
 
 
@@ -530,7 +568,10 @@ list_of_datasets = list('WT_LB/NGM' = res.WT.tidy,
                         'bioF_0vsWT_0' = res.B_WT.tidy,
                         'gacA_0vsWT_0' = res.G_WT.tidy,
                         'bioF_50vsgacA_0' = res.Bmet_G.tidy,
-                        'WT_0vsbioF_50' = res.Bmet_WT.tidy)
+                        'WT_0vsbioF_50' = res.Bmet_WT.tidy,
+                        'WTN_50 vs WT_0'= res.WTNmet_WT.tidy ,
+                        'WT0 vs WTN0 (NGM effect)' = res.NGM.tidy,
+                        'WT50 vs WTN50 (NGM effect)' = res.NGM_met.tidy)
 
 
 write.xlsx(list_of_datasets, here('summary', 'complete_stats.xlsx'),
@@ -538,7 +579,6 @@ write.xlsx(list_of_datasets, here('summary', 'complete_stats.xlsx'),
 
 
 write_csv(results.complete, here('summary', 'complete_stats.csv'))
-
 
 
 
@@ -592,6 +632,245 @@ dev.copy2pdf(device = cairo_pdf,
 
 
 
+
+
+
+# interactions in nutrition ------------------------------------------------------------
+
+# load input data, again, but with only interaction terms
+
+samples_int = read.delim("sampleInfo_interactions.txt") 
+
+samples_int = samples_int %>% mutate(
+  Metformin = as.factor(Metformin),
+  Media = as.factor(Media),
+  Sample = as.factor(Sample),
+  Batch = as.factor(Batch)
+)
+
+dir = getwd()
+rownames(samples_int) = samples_int$Name
+
+# prepare a list with file names
+files = file.path(dir,"quants", samples_int$Name, "quant.sf")
+names(files) = samples_int$Name
+all(file.exists(files)) # check that files exist
+
+# import quantification data 
+txi_int = tximport(files, type = "salmon", tx2gene = tx2gene)
+
+ddsTxi = DESeqDataSetFromTximport(txi_int, colData = samples_int, 
+                                  design = ~ Batch + Media + Metformin + Media:Metformin)
+
+# # prefilter, but that might not be necessary
+keep = rowSums(counts(ddsTxi)) >= 10
+ddsTxi = ddsTxi[keep,]
+
+ddsTxi$Media = relevel(ddsTxi$Media, ref = "LB/NGM")
+# ddsTxi$Metformin = relevel(ddsTxi$Metformin, ref = 0)
+# run the Differential Expression Analysis
+# design(ddsTxi) <- formula(~ Bacteria + Worm)
+dds_int = DESeq(ddsTxi)
+
+resultsNames(dds_int)
+
+int_res = results(dds_int, name="MediaNGM.Metformin50")
+
+int_res.tidy = as_tibble(int_res, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down')) %>% 
+  drop_na(padj) %>% 
+  left_join(info)
+
+
+d = plotCounts(dds_int, gene='WBGene00017501', intgroup="Media",
+               returnData = T)
+
+ggplot(d, aes(x=Media, y=count)) + 
+  geom_point(position=position_jitter(w=0.1,h=0)) 
+
+
+
+gns = int_res.tidy %>% arrange(padj) %>% 
+  head(6) %>% pull(gene_id)
+
+
+gns = int_res.tidy %>% 
+  filter(padj < 0.01)%>% 
+  arrange(desc(abs(log2FoldChange))) %>% 
+  filter(baseMean > 50)  %>% 
+  head(15) %>% pull(gene_id)
+
+
+
+gns = c('WBGene00003766')
+
+gene_counts%>%
+  dplyr::filter(gene_id %in% gns) %>%
+  filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50')) %>% 
+  ggplot(aes(y = counts, x = Sample)) +
+  geom_boxplot(aes(fill = Sample),
+               outlier.colour = NULL,
+               outlier.shape = NA) +
+  geom_point(position = position_jitter(width = 0.2)) +
+  facet_wrap(~gene_name, scales = 'free_y') +
+  labs(x = 'Sample',
+       y = 'Normalised counts (log scale)') +
+  theme_cowplot(15) +
+  panel_border() +
+  theme(axis.text.x = element_text(angle=45, hjust = 1))
+
+
+#### get the individual stats ####
+
+# ~ Batch + Media + Metformin + Media:Metformin
+# ddsTxi$Media = relevel(ddsTxi$Media, ref = "LB/NGM")
+
+resultsNames(dds_int)
+
+# interaction
+int_res = results(dds_int, name="MediaNGM.Metformin50")
+
+int_res.tidy = as_tibble(int_res, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down')) %>% 
+  drop_na(padj) %>% 
+  left_join(info) %>% 
+  mutate(contrast = 'interaction', .before = 'Direction')
+
+
+# WT_50 vs WT_0
+wt_int_res = results(dds_int, contrast = c('Metformin', '50','0'))
+
+wt_int_res.tidy = as_tibble(wt_int_res, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down')) %>% 
+  drop_na(padj) %>% 
+  left_join(info) %>% 
+  mutate(contrast = 'WT', .before = 'Direction')
+
+# 
+wtn_int_res = results(dds_int, list( c("Metformin_50_vs_0","MediaNGM.Metformin50") ))
+
+wtn_int_res.tidy = as_tibble(wtn_int_res, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down')) %>% 
+  drop_na(padj) %>% 
+  left_join(info) %>% 
+  mutate(contrast = 'WTN', .before = 'Direction')
+
+
+
+
+
+list_of_datasets = list(
+  'WT'=wt_int_res.tidy %>% select(-entrezid),
+  'WTN'=wtn_int_res.tidy %>% select(-entrezid),
+  'interaction'=int_res.tidy %>% select(-entrezid)
+)
+
+
+
+write.xlsx(list_of_datasets, here('summary', 'interaction_stats.xlsx'),
+           overwrite = T, colNames = T, rowNames = F,)
+
+
+interaction_results = int_res.tidy %>% bind_rows(wt_int_res.tidy, wtn_int_res.tidy) %>% 
+  select(-entrezid) 
+
+
+interaction_results %>% 
+  write_csv(here('summary', 'interaction_stats.csv'))
+
+
+#### interaction plots ####
+gns = c('WBGene00003766')
+
+gns_stats = interaction_results %>% 
+  filter(gene_id %in% gns) %>% 
+  mutate(p_adj_stars = ifelse(p_adj_stars == ' ', 'no sig', p_adj_stars))
+
+gns_counts = gene_counts %>%
+  dplyr::filter(gene_id %in% gns) %>%
+  filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50')) %>% 
+  mutate(max_val = max(counts))
+
+max_val = gns_counts$max_val[1]
+
+fc.wt = gns_stats %>% filter(contrast=='WT') %>% pull(log2FoldChange) %>% round(2)
+fc.wtn = gns_stats %>% filter(contrast=='WTN') %>% pull(log2FoldChange)%>% round(2)
+fc.int = gns_stats %>% filter(contrast=='interaction') %>% pull(log2FoldChange)%>% round(2)
+
+pval.wt = gns_stats %>% filter(contrast=='WT') %>% pull(p_adj_stars)
+pval.wtn = gns_stats %>% filter(contrast=='WTN') %>% pull(p_adj_stars)
+pval.int = gns_stats %>% filter(contrast=='interaction') %>% pull(p_adj_stars)
+
+
+gns_counts %>% 
+  ggplot(aes(y = counts, x = Sample)) +
+  geom_boxplot(aes(fill = Sample),
+               outlier.colour = NULL,
+               outlier.shape = NA) +
+  geom_point(position = position_jitter(width = 0.2)) +
+  stat_summary(
+    geom = "point",
+    fun = "mean",
+    col = "black",
+    size = 6,
+    shape = 21,
+    fill = "blue"
+  ) +
+  # WT segment
+  geom_segment(aes(x = 1, y = max_val*1.05, 
+                   xend = 2, yend = max_val*1.05),
+               colour = 'black', size = 1) +
+  annotate('text', x = 1.5, y = max_val*1.07,
+           label = glue('log2FC:{fc.wt}, pval:{pval.wt}')) +
+  # WTN segment
+  geom_segment(aes(x = 3, y = max_val*1.05, 
+                   xend = 4, yend = max_val*1.05),
+               colour = 'black', size = 1) +
+  annotate('text', x = 3.5, y = max_val*1.07,
+           label = glue('log2FC:{fc.wtn}, pval:{pval.wtn}')) +
+  # Int segment
+  geom_segment(aes(x = 1.5, y = max_val*1.15, 
+                   xend = 3.5, yend = max_val*1.15),
+               colour = 'red', size = 1) +
+  annotate('text', x = 2.5, y = max_val*1.17,
+           label = glue('log2FC:{fc.int}, pval:{pval.int}')) +
+  facet_wrap(~gene_name, scales = 'free_y') +
+  labs(x = 'Sample',
+       y = 'Normalised counts (log scale)') +
+  theme_cowplot(15) +
+  panel_border() +
+  theme(axis.text.x = element_text(angle=45, hjust = 1))
+
+
+
+# DESeq2 analysis ---------------------------------------------------------
+
+
+
+### starting analysis with DESeq2
+# create DESeq data type to be analysed
+# let's introduce a batch effect just in case
+ddsTxi = DESeqDataSetFromTximport(txi, colData = samples, 
+                                  design = ~ Batch + Sample)
+
+# # prefilter, but that might not be necessary
+keep = rowSums(counts(ddsTxi)) >= 10
+ddsTxi = ddsTxi[keep,]
+
+ddsTxi$Sample = relevel(ddsTxi$Sample, ref = "WT_0")
+
+# run the Differential Expression Analysis
+# design(ddsTxi) <- formula(~ Bacteria + Worm)
+dds = DESeq(ddsTxi)
+
+
+
+
+
 ### Exploratory plots/analysis ############################# 
 
 # barplot that shows the % of DE genes in the 4 main comparisons
@@ -605,7 +884,7 @@ results.complete %>%
   dplyr::filter(Sig == 1) %>%
   ggplot(aes(x = fct_reorder(Contrast, Fraction, .desc = TRUE), y = Fraction)) +
   geom_bar(stat = 'identity', width = 0.5, aes(fill = Contrast)) +
-  scale_fill_brewer(palette = "Dark2") + 
+  # scale_fill_brewer(palette = "Dark2") + 
   scale_y_continuous(limits = c(0, 50), 
                      breaks = c(0, 15, 30, 50),
                      expand = expansion(mult = c(0, 0.05))) +
@@ -662,60 +941,8 @@ dev.copy2pdf(device = cairo_pdf,
 #### # # # ## # # ## # 
 
 
-## ploting some data
-###
-# quick check on a couple genes of interest
-# WBGene00045401 = eol-1
-# WBGene00018997 = F57B9.3
-gns = c('WBGene00045401', 'WBGene00018997')
-
-# acdh-1 and acdh-2
-# WBGene00016943 = acdh-1
-# WBGene00015894 = acdh-2
-gns = c('WBGene00016943', 'WBGene00015894')
-
-# WBGene00009221 = acs-2
-# WBGene00010759 = cysl-2 
-
-gns = c('WBGene00009221', 'WBGene00010759')
-
-
-# WBGene00020343 = acs-3
-# WBGene00003623 = nhr-25
-gns = c('WBGene00016943','WBGene00009221', 'WBGene00020343', 'WBGene00003623')
-
-
-
-# for Filipe, for QQ review
-# hlh-30
-gns = c('WBGene00020930')
-
-# fmo-2
-gns = c('WBGene00001477')
-
-# ftn-1
-gns = c('WBGene00001500')
-
-# hif-1
-gns = c('WBGene00001851')
-
-# sqst-1
-gns = c('WBGene00011737')
-
-# fat-7
-gns = c('WBGene00001399')
-
-# fat-1
-gns = c('WBGene00001393')
-
-# cbp-1 (PE300 ortholog)
-gns = c('WBGene00000366')
-
-# nol-6 (nucleolar protein 6)
-gns = c('WBGene00000608')
-
-# random 
-gns = c('WBGene00000782')
+# argK-1 
+gns = c('WBGene00009706')
 
 gene_counts%>%
   dplyr::filter(gene_id %in% gns) %>%
@@ -731,9 +958,155 @@ gene_counts%>%
   panel_border() +
   theme(axis.text.x = element_text(angle=45, hjust = 1))
 
+
 # quartz.save(file = here('summary', 'nol-6.pdf'),
 #             type = 'pdf', dpi = 300, height = 7, width = 6)
 # 
+
+
+### small function to help me
+gplot = function(genes = c('WBGene00009706'), fw_nrows = 1){
+  gene_counts_norm %>% 
+    dplyr::filter(gene_id %in% genes) %>%
+    ggplot(aes(y = counts, x = Sample)) +
+    geom_boxplot(aes(fill = Sample),
+                 outlier.colour = NULL,
+                 outlier.shape = NA) +
+    geom_point(position = position_jitter(width = 0.2)) +
+    facet_wrap(~gene_name, scales = 'free_y', nrow = fw_nrows) +
+    labs(x = 'Sample',
+         y = 'Normalised counts') +
+    theme_cowplot(15) +
+    panel_border() +
+    theme(axis.text.x = element_text(angle=45, hjust = 1)) + 
+    guides(fill = 'none')
+}
+
+
+
+gplot(c('WBGene00009706', 'WBGene00000185'), fw_nrows = 2)
+
+
+
+#### interesting genes ####
+
+# which genes share a similar behaviour as argk-1
+
+selected_genes = results.complete %>% 
+  filter(Contrast %in% c('WT', 'WTN', 'bioF')) %>% 
+  filter(padj < 0.05, Direction == 'Up', log2FoldChange > 1) %>% 
+  select(gene_name, gene_id, Contrast, log2FoldChange) %>% 
+  pivot_wider(names_from = Contrast, values_from = log2FoldChange) %>% 
+  drop_na() 
+
+gplot(genes = selected_genes%>% pull(gene_id), fw_nrows = 4)
+
+ggsave(file = here('summary', 'genes_of_interest.pdf'),
+            height = 10, width = 12)
+
+
+
+
+
+
+
+
+
+#### Volcano plots ####
+
+temp_results = results.complete %>% 
+  # dplyr::filter(Contrast %in% c('WT')) %>%
+  mutate(padj_log = -log10(padj),
+         significant = ifelse(padj < 0.05, 'Significant', ''),
+         log2FC = ifelse(abs(log2FoldChange) > 3.5, 3.5, log2FoldChange),
+         logPval = ifelse(padj_log > 15, 15, padj_log)) %>% 
+  drop_na(significant) 
+
+
+target = 'WT_50'
+ref = 'WT_0'
+
+temp_results %>% 
+  dplyr::filter(Contrast %in% c('WT')) %>%
+  ggplot(aes(x = log2FC, y = logPval, 
+             text = paste('Gene: ',gene_name))) +
+  geom_point(aes(color = significant), alpha = 0.7) +
+  scale_colour_manual(values=c('#BABABA', '#0000FF')) +
+  labs(x = glue::glue('log<sub>2</sub> Fold Change<br>Contrast: {target} vs {ref}'),
+       y = '-log<sub>10</sub>(P-value adj)',
+       title = '',
+       color = NULL) +
+  theme_cowplot(15) +
+  theme(axis.title.x = element_markdown(),
+        axis.title.y = element_markdown()) +
+  guides(color = 'none')
+
+
+ggplotly(p,  width=700, height=800) %>% 
+  layout(
+    title = list(text="Volcano plot of comparison <br> WT vs WT 50",
+                 size = 4))
+
+temp_results %>% 
+  dplyr::filter(Contrast %in% c('WT')) %>%
+  plot_ly() %>% 
+  add_trace(x = ~log2FC,
+            y = ~logPval,
+            type = 'scatter',
+            mode = 'markers', 
+            # text = ~gene_name,
+            color = ~significant, 
+            colors = c('#BABABA', '#0000FF'),
+            hovertemplate = paste('<i>Gene</i>: {~gene_name}',
+                                  '<br>log2FC: %{log2FC}',
+                                  '<br>log2Pval: %{logPval}</b>'),
+            showlegend = FALSE
+            )
+  
+
+
+
+## create a function to plot this
+
+volcano = function(
+  contrast = 'WT',
+  padj_thres = 15,
+  log2_thres = 3.5){
+  
+  temp = results.complete %>% 
+    dplyr::filter(Contrast %in% contrast) %>%
+    mutate(padj_log = -log10(padj),
+           significant = ifelse(padj < 0.05, 'Significant', ''),
+           log2FC = ifelse(abs(log2FoldChange) > log2_thres, log2_thres, log2FoldChange),
+           logPval = ifelse(padj_log > padj_thres, padj_thres, padj_log)) %>% 
+    drop_na(significant)
+  
+  title = temp %>% distinct(Contrast_description) %>% pull(Contrast_description)
+  
+  p = temp %>% 
+    ggplot(aes(x = log2FC, y = logPval, 
+               text = paste('Gene: ',gene_name))) +
+    geom_point(aes(color = significant), alpha = 0.7) +
+    scale_colour_manual(values=c('#BABABA', '#0000FF')) +
+    labs(x = 'log<sub>2</sub> Fold Change',
+         y = '-log<sub>10</sub>(P-value adj)',
+         title = title,
+         color = NULL) +
+    theme_cowplot(15) +
+    theme(axis.title.x = element_markdown(),
+          axis.title.y = element_markdown()) +
+    guides(color = 'none')
+  
+  
+  ggplotly(p,  width=700, height=800) %>% 
+    layout(
+      title = list(size = 4)) 
+}
+
+
+volcano()
+
+volcano(contrast = 'bioF', padj_thres = 50, log2_thres = 9)
 
 
 
