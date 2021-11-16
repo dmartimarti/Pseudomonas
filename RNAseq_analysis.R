@@ -1196,3 +1196,309 @@ dev.copy2pdf(device = cairo_pdf,
              height = 6, width = 8, useDingbats = FALSE)
 
 
+
+
+
+# STRING DB enrich --------------------------------------------------------
+
+
+# prepare the gene lists to feed my script
+
+# comparisons that I made
+unique(results.complete$Contrast)
+
+# Log2 FC threshold
+fc_thres_pos = 0.5
+fc_thres_neg = -0.5
+
+# base mean threshold, to remove outliers
+base_thres = 50
+
+
+
+
+# WT
+wt_pos = results.complete %>% 
+  filter(Contrast == 'WT', log2FoldChange > fc_thres_pos, 
+         padj < 0.05, baseMean > base_thres) %>% 
+  arrange(desc(log2FoldChange)) %>% pull(gene_name)
+
+wt_neg = results.complete %>% 
+  filter(Contrast == 'WT', log2FoldChange < fc_thres_neg, 
+         padj < 0.05, baseMean > base_thres) %>% 
+  arrange(desc(log2FoldChange)) %>% pull(gene_name)
+
+
+# WT
+wtn_pos = results.complete %>% 
+  filter(Contrast == 'WTN', log2FoldChange > fc_thres_pos, 
+         padj < 0.05, baseMean > base_thres) %>% 
+  arrange(desc(log2FoldChange)) %>% pull(gene_name)
+
+wtn_neg = results.complete %>% 
+  filter(Contrast == 'WTN', log2FoldChange < fc_thres_neg, 
+         padj < 0.05, baseMean > base_thres) %>% 
+  arrange(desc(log2FoldChange)) %>% pull(gene_name)
+
+
+# bioF
+bioF_pos = results.complete %>% 
+  filter(Contrast == 'bioF', log2FoldChange > fc_thres_pos, 
+         padj < 0.05, baseMean > base_thres) %>% 
+  arrange(desc(log2FoldChange)) %>% pull(gene_name)
+
+bioF_neg = results.complete %>% 
+  filter(Contrast == 'bioF', log2FoldChange < fc_thres_neg, 
+         padj < 0.05, baseMean > base_thres) %>% 
+  arrange(desc(log2FoldChange)) %>% pull(gene_name)
+
+
+
+list_of_genes = list(
+  'WT_UP' = c('genes',wt_pos),
+  'WT_DOWN' = c('genes',wt_neg),
+  'WTN_UP' = c('genes',wtn_pos),
+  'WTN_DOWN' = c('genes',wtn_neg),
+  'bioF_UP' = c('genes',bioF_pos),
+  'bioF_DOWN' = c('genes',bioF_neg)
+)
+
+
+write.xlsx(list_of_genes, here('summary', 'multi_gene_selection.xlsx'),
+           overwrite = TRUE)
+
+
+
+# GSEA analysis -----------------------------------------------------------
+
+# Enrichment Browser
+
+library(EnrichmentBrowser)
+
+# user function to read samples from txt
+read.samples = function(samp_file = "sampleInfo.txt", quants = 'quants') {
+  
+  samples = read.delim(samp_file) 
+  
+  dir = getwd()
+  rownames(samples) = samples$Name
+  
+  quants_dir = quants
+  
+  # prepare a list with file names
+  files = file.path(dir,quants_dir, samples$Name, "quant.sf")
+  names(files) = samples$Name
+  
+  return(files)
+}
+
+
+
+# user function to get the DESeq2 summarizeExperiment from sample info
+
+get.experiment <- function(
+  thres=40, # count threshold to filter out genes
+  sampleInfo = 'sampleInfo_WT.txt', # sample info file with samples to load
+  ref = 'WT_0' # reference of the comparison
+) {
+  
+  cat(glue::glue('Reading file {sampleInfo} \n\n'))
+  
+  # need to do again DESeq2 for hct per separate
+  files.wt = read.samples(samp_file = sampleInfo)
+  
+  cat('Importing files to the system!\n')
+  
+  # import quantification data
+  txi.wt = tximport::tximport(files.wt, type = "salmon", tx2gene = tx2gene)
+  
+  samples.red = read.delim(sampleInfo) 
+  ddsTxi.wt = DESeqDataSetFromTximport(txi.wt,
+                                       colData = samples.red,
+                                       design = ~ Batch + Sample)
+  
+  cat(glue::glue('Filtering rows with less than {thres} counts.\n'))
+  
+  # filtering by min number of sequences
+  keep = rowSums(counts(ddsTxi.wt)) >= thres
+  ddsTxi.wt = ddsTxi.wt[keep,]
+  
+  ddsTxi.wt$Sample = relevel(ddsTxi.wt$Sample, ref = ref)
+  
+  cat('Running DDSeq2 pipeline...\n')
+  # run the Differential Expression Analysis
+  dds.wt = DESeq(ddsTxi.wt)
+  
+  dds.wt.pure = results(dds.wt)
+  
+  cat('Importing gene names and normalising data.\n')
+  # import for gene enrichment
+  WT.SE = import(dds.wt, dds.wt.pure, from = c('DESeq2'), anno = 'cel')
+  # map IDs
+  WT.SE = idMap(WT.SE, org = "cel", from = "ENSEMBL", to = "ENTREZID")
+  
+  # normalize counts
+  WT.SE = normalize(WT.SE, norm.method = "vst")
+  
+  cat('Finished!\n')
+  return(WT.SE)
+}
+
+
+
+## Run this once!
+
+# obtaining gene sets
+kegg.gs = getGenesets(org = "cel", db = "kegg")
+go.gs = getGenesets(org = "cel", db = "go", onto = "BP")
+
+
+
+
+#### WT ####
+
+WT.SE = get.experiment()
+
+head(rownames(WT.SE))
+
+# set based enrichment analysis
+sbeaMethods()
+
+# run GSEA enrichment
+# kegg 
+alpha = 0.2
+wt.gsea = sbea(method = "gsea", se = WT.SE, gs = kegg.gs, alpha = alpha)
+wt.ora = sbea(method = "ora", se = WT.SE, gs = kegg.gs, alpha = alpha)
+
+wt.go.gsea = sbea(method = "gsea", se = WT.SE, gs = go.gs, alpha = 0.05)
+
+gsRanking(wt.go.gsea)
+
+gsRanking(wt.gsea)
+
+gsRanking(wt.ora)
+
+eaBrowse(wt.gsea, html.only = FALSE, out.dir = 'EnrichmentBrowser/KEGG/wt.gsea', 
+         report.name = 'wt.gsea')
+
+eaBrowse(wt.ora, html.only = FALSE, out.dir = 'EnrichmentBrowser/KEGG/wt.ora', 
+         report.name = 'wt.ora')
+
+
+eaBrowse(wt.go.gsea, html.only = FALSE, out.dir = 'EnrichmentBrowser/GO_BP/wt.go.gsea', 
+         report.name = 'wt.go.gsea')
+
+
+# network regulation analysis
+
+cel.grn = compileGRN(org="cel", db="kegg")
+
+
+nbeaMethods()
+
+nbea.res = nbea(method="ggea", 
+                se=WT.SE, 
+                gs=kegg.gs, 
+                grn=cel.grn)
+
+gsRanking(nbea.res) %>% view
+
+
+
+
+#### WT NGM ####
+
+WTN.SE = get.experiment(sampleInfo = 'sampleInfo_WTN.txt',
+                       ref = 'WTN_0')
+
+# run GSEA enrichment
+# kegg 
+alpha = 0.2
+wtn.gsea = sbea(method = "gsea", se = WTN.SE, gs = kegg.gs, alpha = alpha)
+wtn.ora = sbea(method = "ora", se = WTN.SE, gs = kegg.gs, alpha = alpha)
+
+wtn.go.gsea = sbea(method = "gsea", se = WTN.SE, gs = go.gs, alpha = 0.05)
+
+gsRanking(wtn.gsea)
+gsRanking(wtn.ora)
+gsRanking(wtn.go.gsea)
+
+eaBrowse(wtn.gsea, html.only = FALSE, 
+         out.dir = 'EnrichmentBrowser/KEGG/wtn.gsea', 
+         report.name = 'wtn.gsea')
+
+eaBrowse(wtn.ora, html.only = FALSE, 
+         out.dir = 'EnrichmentBrowser/KEGG/wtn.ora', 
+         report.name = 'wtn.ora')
+
+
+eaBrowse(wtn.go.gsea, html.only = FALSE, 
+         out.dir = 'EnrichmentBrowser/GO_BP/wtn.go.gsea', 
+         report.name = 'wtn.go.gsea')
+
+
+# network regulation analysis
+
+nbea.res = nbea(method="ggea", 
+                se=WTN.SE, 
+                gs=kegg.gs, 
+                grn=cel.grn)
+
+gsRanking(nbea.res) 
+
+
+
+
+
+
+#### bioF  ####
+
+bioF.SE = get.experiment(sampleInfo = 'sampleInfo_bioF.txt',
+                        ref = 'B_0')
+
+# run GSEA enrichment
+# kegg 
+alpha = 0.2
+bioF.gsea = sbea(method = "gsea", se = bioF.SE, gs = kegg.gs, alpha = alpha)
+bioF.ora = sbea(method = "ora", se = bioF.SE, gs = kegg.gs, alpha = alpha)
+
+bioF.go.gsea = sbea(method = "gsea", se = bioF.SE, gs = go.gs, alpha = 0.05)
+
+gsRanking(bioF.gsea)
+gsRanking(bioF.ora)
+gsRanking(bioF.go.gsea)
+
+eaBrowse(bioF.gsea, html.only = FALSE, 
+         out.dir = 'EnrichmentBrowser/KEGG/bioF.gsea', 
+         report.name = 'bioF.gsea')
+
+eaBrowse(bioF.ora, html.only = FALSE, 
+         out.dir = 'EnrichmentBrowser/KEGG/bioF.ora', 
+         report.name = 'bioF.ora')
+
+
+eaBrowse(bioF.go.gsea, html.only = FALSE, 
+         out.dir = 'EnrichmentBrowser/GO_BP/bioF.go.gsea', 
+         report.name = 'bioF.go.gsea')
+
+
+# network regulation analysis
+
+nbea.res = nbea(method="ggea", 
+                se=bioF.SE, 
+                gs=kegg.gs, 
+                grn=cel.grn)
+
+gsRanking(nbea.res) 
+
+
+
+
+
+
+
+
+
+
+
+
