@@ -1207,65 +1207,50 @@ dev.copy2pdf(device = cairo_pdf,
 # comparisons that I made
 unique(results.complete$Contrast)
 
-# Log2 FC threshold
-fc_thres_pos = 0.5
-fc_thres_neg = -0.5
-
-# base mean threshold, to remove outliers
-base_thres = 50
-
-
-
-
-# WT
-wt_pos = results.complete %>% 
-  filter(Contrast == 'WT', log2FoldChange > fc_thres_pos, 
-         padj < 0.05, baseMean > base_thres) %>% 
-  arrange(desc(log2FoldChange)) %>% pull(gene_name)
-
-wt_neg = results.complete %>% 
-  filter(Contrast == 'WT', log2FoldChange < fc_thres_neg, 
-         padj < 0.05, baseMean > base_thres) %>% 
-  arrange(desc(log2FoldChange)) %>% pull(gene_name)
-
-
-# WT
-wtn_pos = results.complete %>% 
-  filter(Contrast == 'WTN', log2FoldChange > fc_thres_pos, 
-         padj < 0.05, baseMean > base_thres) %>% 
-  arrange(desc(log2FoldChange)) %>% pull(gene_name)
-
-wtn_neg = results.complete %>% 
-  filter(Contrast == 'WTN', log2FoldChange < fc_thres_neg, 
-         padj < 0.05, baseMean > base_thres) %>% 
-  arrange(desc(log2FoldChange)) %>% pull(gene_name)
+# function to extract gene sets
+gene_sets = function(
+  contrast = 'WT',     # contrast to extract
+  fc_thres_pos = 0.5,  # log2FC positive threshold
+  fc_thres_neg = -0.5, # log2FC negative threshold
+  base_thres = 50      # base threshold
+  ){
+  positive = results.complete %>% 
+    filter(Contrast == contrast, log2FoldChange > fc_thres_pos, 
+           padj < 0.05, baseMean > base_thres) %>% 
+    arrange(desc(log2FoldChange)) %>% head(500) %>% 
+    pull(gene_name)
+  
+  negative = results.complete %>% 
+    filter(Contrast == contrast, log2FoldChange < fc_thres_neg, 
+           padj < 0.05, baseMean > base_thres) %>% 
+    arrange(log2FoldChange) %>% head(500) %>%  
+    pull(gene_name)
+  
+  out_list = list()
+  
+  out_list[[paste0(contrast,'_UP')]] = positive
+  out_list[[paste0(contrast,'_DOWN')]] = negative
+  
+  return(out_list)
+  }
 
 
-# bioF
-bioF_pos = results.complete %>% 
-  filter(Contrast == 'bioF', log2FoldChange > fc_thres_pos, 
-         padj < 0.05, baseMean > base_thres) %>% 
-  arrange(desc(log2FoldChange)) %>% pull(gene_name)
-
-bioF_neg = results.complete %>% 
-  filter(Contrast == 'bioF', log2FoldChange < fc_thres_neg, 
-         padj < 0.05, baseMean > base_thres) %>% 
-  arrange(desc(log2FoldChange)) %>% pull(gene_name)
-
-
-
-list_of_genes = list(
-  'WT_UP' = c('genes',wt_pos),
-  'WT_DOWN' = c('genes',wt_neg),
-  'WTN_UP' = c('genes',wtn_pos),
-  'WTN_DOWN' = c('genes',wtn_neg),
-  'bioF_UP' = c('genes',bioF_pos),
-  'bioF_DOWN' = c('genes',bioF_neg)
-)
+# loop to get the gene sets from the different contrasts
+study_contrasts = unique(results.complete$Contrast)
+list_of_genes = list()
+for (contrast in study_contrasts){
+  up = gene_sets(contrast=contrast)[[1]]
+  down = gene_sets(contrast=contrast)[[2]]
+  
+  list_of_genes[[glue::glue('{contrast}_UP')]] = up
+  list_of_genes[[glue::glue('{contrast}_DOWN')]] = down
+  
+}
 
 
 write.xlsx(list_of_genes, here('summary', 'multi_gene_selection.xlsx'),
            overwrite = TRUE)
+
 
 
 
