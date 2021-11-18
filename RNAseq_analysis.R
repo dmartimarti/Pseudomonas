@@ -1299,29 +1299,150 @@ cat3 = read_excel("summary/Wormcat/Out_Nov-18-2021-16_33_34-multi_gene_wormcat.x
 
 
 cat1 %>% 
-  select(cat_1 = `Category 1`, Count, starts_with('bioF_')) %>% 
+  select(cat_1 = `Category 1`, Count, starts_with('WTNmet_WT_')) %>% 
   pivot_longer(cols = ends_with('_RGS'), names_to = 'RGS', values_to = 'RGS_counts') %>% 
   pivot_longer(cols = ends_with('_Pvalue'), names_to = 'PValue_class', values_to = 'Pval') %>% 
   filter(
     (grepl('_UP', RGS) & grepl('_UP', PValue_class)) |
-    (grepl('_DOWN', RGS) & grepl('_DOWN', PValue_class))
+    (grepl('_DOWN', RGS) & grepl('_DOWN', PValue_class)) # fixes weird stuff happening here
     ) %>% 
+  arrange(cat_1) %>% 
   mutate(RGS = case_when(grepl('_DOWN', RGS) ~ 'DOWN',
                          grepl('_UP', RGS) ~ 'UP'),
          Pval = as.numeric(Pval),
-         # Pval = case_when(is.na(Pval) ~ 1,
-         #                  TRUE ~ Pval),
+         RGS_mod = RGS_counts * Pval/Pval, # trick to convert non-sig in NAs
          log10pval = -log10(Pval),
-         Contrast = 'bioF')  %>% 
+         Contrast = 'bioF',
+         cat_1 = factor(cat_1, levels = unique(c(.$cat_1))))  %>% 
+  drop_na() %>% 
   ggplot(aes(x = RGS, y = cat_1)) +
-  geom_point(aes(size = log10pval, color = RGS_counts)) +
+  geom_point(aes(size = RGS_mod, color = log10pval),
+             na.rm = TRUE) +
   labs(x = 'Direction',
        y = 'Categories') +
+  scale_y_discrete(limits = rev) +
+  scale_x_discrete(limits = rev) +
+  scale_color_viridis(option = 'inferno',
+                      name = '-log10(Pval)') +
+  scale_size_continuous(name = 'Counts') +
   theme_cowplot(15)
 
+ggsave(here('summary/Wormcat/cat_1', glue::glue('{contrast}enrich_cat1.pdf')))
+
+
+# print cat 1
+for (contrast in study_contrasts){
+  contrast = paste0(contrast,'_')
+  print(contrast)
+  plt = cat1 %>%
+    select(cat_1 = `Category 1`, Count, starts_with(contrast)) %>%
+    pivot_longer(cols = ends_with('_RGS'), names_to = 'RGS', values_to = 'RGS_counts') %>%
+    pivot_longer(cols = ends_with('_Pvalue'), names_to = 'PValue_class', values_to = 'Pval') %>%
+    filter(
+      (grepl('_UP', RGS) & grepl('_UP', PValue_class)) |
+        (grepl('_DOWN', RGS) & grepl('_DOWN', PValue_class)) # fixes weird stuff happening here
+    ) %>%
+    arrange(cat_1) %>%
+    mutate(RGS = case_when(grepl('_DOWN', RGS) ~ 'DOWN',
+                           grepl('_UP', RGS) ~ 'UP'),
+           Pval = as.numeric(Pval),
+           RGS_mod = RGS_counts * Pval/Pval, # trick to convert non-sig in NAs
+           log10pval = -log10(Pval),
+           Contrast = 'bioF',
+           cat_1 = factor(cat_1, levels = unique(c(.$cat_1))))  %>%
+    drop_na() %>%
+    ggplot(aes(x = RGS, y = cat_1)) +
+    geom_point(aes(size = RGS_mod, color = log10pval),
+               na.rm = TRUE) +
+    labs(x = 'Direction',
+         y = 'Categories') +
+    scale_y_discrete(limits = rev) +
+    scale_x_discrete(limits = rev) +
+    scale_color_viridis(option = 'inferno',
+                        name = '-log10(Pval)') +
+    scale_size_continuous(name = 'Counts') +
+    theme_cowplot(15)
+  
+  ggsave(here('summary/Wormcat/cat_1', glue::glue('{contrast}enrich_cat1.pdf')),
+         plt)
+}
 
 
 
+# print cat 2
+for (contrast in study_contrasts){
+  contrast = paste0(contrast,'_')
+  print(contrast)
+  plt = cat2 %>%
+    select(cat_1 = `Category 2`, Count, starts_with(contrast)) %>%
+    pivot_longer(cols = ends_with('_RGS'), names_to = 'RGS', values_to = 'RGS_counts') %>%
+    pivot_longer(cols = ends_with('_Pvalue'), names_to = 'PValue_class', values_to = 'Pval') %>%
+    filter(
+      (grepl('_UP', RGS) & grepl('_UP', PValue_class)) |
+        (grepl('_DOWN', RGS) & grepl('_DOWN', PValue_class)) # fixes weird stuff happening here
+    ) %>%
+    arrange(cat_1) %>%
+    mutate(RGS = case_when(grepl('_DOWN', RGS) ~ 'DOWN',
+                           grepl('_UP', RGS) ~ 'UP'),
+           Pval = as.numeric(Pval),
+           RGS_mod = RGS_counts * Pval/Pval, # trick to convert non-sig in NAs
+           log10pval = -log10(Pval),
+           Contrast = 'bioF',
+           cat_1 = factor(cat_1, levels = unique(c(.$cat_1))))  %>%
+    drop_na() %>%
+    ggplot(aes(x = RGS, y = cat_1)) +
+    geom_point(aes(size = RGS_mod, color = log10pval),
+               na.rm = TRUE) +
+    labs(x = 'Direction',
+         y = 'Categories') +
+    scale_y_discrete(limits = rev) +
+    scale_x_discrete(limits = rev) +
+    scale_color_viridis(option = 'inferno',
+                        name = '-log10(Pval)') +
+    scale_size_continuous(name = 'Counts') +
+    theme_cowplot(15)
+  
+  ggsave(here('summary/Wormcat/cat_2', glue::glue('{contrast}enrich_cat2.pdf')),
+         plt,  height = 15, width = 11)
+}
+
+
+# print cat 3
+for (contrast in study_contrasts){
+  contrast = paste0(contrast,'_')
+  print(contrast)
+  plt = cat3 %>%
+    select(cat_1 = `Category 3`, Count, starts_with(contrast)) %>%
+    pivot_longer(cols = ends_with('_RGS'), names_to = 'RGS', values_to = 'RGS_counts') %>%
+    pivot_longer(cols = ends_with('_Pvalue'), names_to = 'PValue_class', values_to = 'Pval') %>%
+    filter(
+      (grepl('_UP', RGS) & grepl('_UP', PValue_class)) |
+        (grepl('_DOWN', RGS) & grepl('_DOWN', PValue_class)) # fixes weird stuff happening here
+    ) %>%
+    arrange(cat_1) %>%
+    mutate(RGS = case_when(grepl('_DOWN', RGS) ~ 'DOWN',
+                           grepl('_UP', RGS) ~ 'UP'),
+           Pval = as.numeric(Pval),
+           RGS_mod = RGS_counts * Pval/Pval, # trick to convert non-sig in NAs
+           log10pval = -log10(Pval),
+           Contrast = 'bioF',
+           cat_1 = factor(cat_1, levels = unique(c(.$cat_1))))  %>%
+    drop_na() %>%
+    ggplot(aes(x = RGS, y = cat_1)) +
+    geom_point(aes(size = RGS_mod, color = log10pval),
+               na.rm = TRUE) +
+    labs(x = 'Direction',
+         y = 'Categories') +
+    scale_y_discrete(limits = rev) +
+    scale_x_discrete(limits = rev) +
+    scale_color_viridis(option = 'inferno',
+                        name = '-log10(Pval)') +
+    scale_size_continuous(name = 'Counts') +
+    theme_cowplot(15)
+  
+  ggsave(here('summary/Wormcat/cat_3', glue::glue('{contrast}enrich_cat3.pdf')),
+         plt, height = 15, width = 11)
+}
 
 
 # GSEA analysis -----------------------------------------------------------
