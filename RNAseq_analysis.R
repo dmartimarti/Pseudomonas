@@ -1212,19 +1212,20 @@ gene_sets = function(
   contrast = 'WT',     # contrast to extract
   fc_thres_pos = 0.5,  # log2FC positive threshold
   fc_thres_neg = -0.5, # log2FC negative threshold
-  base_thres = 50      # base threshold
-  ){
+  base_thres = 50,      # base threshold
+  ID = 'gene_id'
+){
   positive = results.complete %>% 
     filter(Contrast == contrast, log2FoldChange > fc_thres_pos, 
            padj < 0.05, baseMean > base_thres) %>% 
     arrange(desc(log2FoldChange)) %>% head(500) %>% 
-    pull(gene_name)
+    pull({{ID}})
   
   negative = results.complete %>% 
     filter(Contrast == contrast, log2FoldChange < fc_thres_neg, 
            padj < 0.05, baseMean > base_thres) %>% 
     arrange(log2FoldChange) %>% head(500) %>%  
-    pull(gene_name)
+    pull({{ID}})
   
   out_list = list()
   
@@ -1232,15 +1233,18 @@ gene_sets = function(
   out_list[[paste0(contrast,'_DOWN')]] = negative
   
   return(out_list)
-  }
+}
+
 
 
 # loop to get the gene sets from the different contrasts
 study_contrasts = unique(results.complete$Contrast)
 list_of_genes = list()
 for (contrast in study_contrasts){
-  up = gene_sets(contrast=contrast)[[1]]
-  down = gene_sets(contrast=contrast)[[2]]
+  up = c('genes',gene_sets(contrast=contrast,
+                           ID = 'gene_name')[[1]])
+  down = c('genes', gene_sets(contrast=contrast,
+                              ID = 'gene_name')[[2]])
   
   list_of_genes[[glue::glue('{contrast}_UP')]] = up
   list_of_genes[[glue::glue('{contrast}_DOWN')]] = down
@@ -1250,6 +1254,72 @@ for (contrast in study_contrasts){
 
 write.xlsx(list_of_genes, here('summary', 'multi_gene_selection.xlsx'),
            overwrite = TRUE)
+
+
+
+
+
+
+# Wormcat -----------------------------------------------------------------
+
+
+# loop to get the gene sets from the different contrasts
+study_contrasts = unique(results.complete$Contrast)
+list_of_genes = list()
+for (contrast in study_contrasts){
+  up = c('Wormbase ID',gene_sets(contrast=contrast,
+                                 ID = 'gene_id')[[1]])
+  down = c('Wormbase ID', gene_sets(contrast=contrast,
+                                    ID = 'gene_id')[[2]])
+  
+  list_of_genes[[glue::glue('{contrast}_UP')]] = up
+  list_of_genes[[glue::glue('{contrast}_DOWN')]] = down
+  
+}
+
+
+write.xlsx(list_of_genes, here('summary', 'multi_gene_wormcat.xlsx'),
+           overwrite = TRUE)
+
+
+#### Plot wormcat results ####
+library(readxl)
+cat1 = read_excel("summary/Wormcat/Out_Nov-18-2021-16_33_34-multi_gene_wormcat.xlsx", 
+                  sheet = "Cat1")
+
+cat2 = read_excel("summary/Wormcat/Out_Nov-18-2021-16_33_34-multi_gene_wormcat.xlsx", 
+                  sheet = "Cat2")
+
+cat3 = read_excel("summary/Wormcat/Out_Nov-18-2021-16_33_34-multi_gene_wormcat.xlsx", 
+                  sheet = "Cat3")
+
+
+
+# let's test a couple examples to generalise the plotting machinery
+
+
+cat1 %>% 
+  select(cat_1 = `Category 1`, Count, starts_with('bioF_')) %>% 
+  pivot_longer(cols = ends_with('_RGS'), names_to = 'RGS', values_to = 'RGS_counts') %>% 
+  pivot_longer(cols = ends_with('_Pvalue'), names_to = 'PValue_class', values_to = 'Pval') %>% 
+  filter(
+    (grepl('_UP', RGS) & grepl('_UP', PValue_class)) |
+    (grepl('_DOWN', RGS) & grepl('_DOWN', PValue_class))
+    ) %>% 
+  mutate(RGS = case_when(grepl('_DOWN', RGS) ~ 'DOWN',
+                         grepl('_UP', RGS) ~ 'UP'),
+         Pval = as.numeric(Pval),
+         # Pval = case_when(is.na(Pval) ~ 1,
+         #                  TRUE ~ Pval),
+         log10pval = -log10(Pval),
+         Contrast = 'bioF')  %>% 
+  ggplot(aes(x = RGS, y = cat_1)) +
+  geom_point(aes(size = log10pval, color = RGS_counts)) +
+  labs(x = 'Direction',
+       y = 'Categories') +
+  theme_cowplot(15)
+
+
 
 
 
@@ -1475,6 +1545,8 @@ nbea.res = nbea(method="ggea",
                 grn=cel.grn)
 
 gsRanking(nbea.res) 
+
+
 
 
 
