@@ -892,7 +892,8 @@ results.complete %>%
   labs(y = '% of DE genes',
        x = 'Condition') +
   guides(fill = 'none') +
-  theme_cowplot(14)
+  theme_cowplot(14) +
+  theme(axis.text.x = element_text(angle=45, hjust = 1))
 
 
 dev.copy2pdf(device = cairo_pdf,
@@ -928,7 +929,8 @@ results.complete %>%
                      expand = expansion(mult = c(0, 0.05))) +
   labs(y = '% of DE genes',
        x = 'Condition') +
-  theme_cowplot(14)
+  theme_cowplot(14) +
+  theme(axis.text.x = element_text(angle=45, hjust = 1))
   
 
 dev.copy2pdf(device = cairo_pdf,
@@ -984,8 +986,10 @@ gplot = function(genes = c('WBGene00009706'), fw_nrows = 1){
 
 
 
-gplot(c('WBGene00009706', 'WBGene00000185'), fw_nrows = 2)
+gplot(c('WBGene00009706', 'WBGene00007864'), fw_nrows = 1)
 
+ggsave(here('summary', 'argk1_irg6_boxplot.pdf'),
+       height = 5, width = 7)
 
 
 #### interesting genes ####
@@ -1212,19 +1216,20 @@ gene_sets = function(
   contrast = 'WT',     # contrast to extract
   fc_thres_pos = 0.5,  # log2FC positive threshold
   fc_thres_neg = -0.5, # log2FC negative threshold
-  base_thres = 50,      # base threshold
+  base_thres = 50,     # base threshold
+  head = 500,          # max number of elements to keep
   ID = 'gene_id'
 ){
   positive = results.complete %>% 
     filter(Contrast == contrast, log2FoldChange > fc_thres_pos, 
            padj < 0.05, baseMean > base_thres) %>% 
-    arrange(desc(log2FoldChange)) %>% head(500) %>% 
+    arrange(desc(log2FoldChange)) %>% head(head) %>% 
     pull({{ID}})
   
   negative = results.complete %>% 
     filter(Contrast == contrast, log2FoldChange < fc_thres_neg, 
            padj < 0.05, baseMean > base_thres) %>% 
-    arrange(log2FoldChange) %>% head(500) %>%  
+    arrange(log2FoldChange) %>% head(head) %>%  
     pull({{ID}})
   
   out_list = list()
@@ -1268,9 +1273,11 @@ study_contrasts = unique(results.complete$Contrast)
 list_of_genes = list()
 for (contrast in study_contrasts){
   up = c('Wormbase ID',gene_sets(contrast=contrast,
-                                 ID = 'gene_id')[[1]])
+                                 ID = 'gene_id',
+                                 head = 5000)[[1]])
   down = c('Wormbase ID', gene_sets(contrast=contrast,
-                                    ID = 'gene_id')[[2]])
+                                    ID = 'gene_id',
+                                    head = 5000)[[2]])
   
   list_of_genes[[glue::glue('{contrast}_UP')]] = up
   list_of_genes[[glue::glue('{contrast}_DOWN')]] = down
@@ -1284,16 +1291,19 @@ write.xlsx(list_of_genes, here('summary', 'multi_gene_wormcat.xlsx'),
 
 #### Plot wormcat results ####
 library(readxl)
-cat1 = read_excel("summary/Wormcat/Out_Nov-18-2021-16_33_34-multi_gene_wormcat.xlsx", 
+cat1 = read_excel("summary/Wormcat/Out_Nov-22-2021-10_26_25-multi_gene_wormcat.xlsx", 
                   sheet = "Cat1")
 
-cat2 = read_excel("summary/Wormcat/Out_Nov-18-2021-16_33_34-multi_gene_wormcat.xlsx", 
+cat2 = read_excel("summary/Wormcat/Out_Nov-22-2021-10_26_25-multi_gene_wormcat.xlsx", 
                   sheet = "Cat2")
 
-cat3 = read_excel("summary/Wormcat/Out_Nov-18-2021-16_33_34-multi_gene_wormcat.xlsx", 
+cat3 = read_excel("summary/Wormcat/Out_Nov-22-2021-10_26_25-multi_gene_wormcat.xlsx", 
                   sheet = "Cat3")
 
 
+dir.create(here('summary/wormcat','cat_1'), showWarnings = FALSE)
+dir.create(here('summary/wormcat','cat_2'), showWarnings = FALSE)
+dir.create(here('summary/wormcat','cat_3'), showWarnings = FALSE)
 
 # let's test a couple examples to generalise the plotting machinery
 
@@ -1443,6 +1453,12 @@ for (contrast in study_contrasts){
   ggsave(here('summary/Wormcat/cat_3', glue::glue('{contrast}enrich_cat3.pdf')),
          plt, height = 15, width = 11)
 }
+
+
+
+
+
+
 
 
 # GSEA analysis -----------------------------------------------------------
@@ -1672,6 +1688,190 @@ gsRanking(nbea.res)
 
 
 
+
+
+
+
+
+
+
+
+
+# # # # # # # # # # # 
+# # # # # # # # # # # 
+# # # # # # # # # # # 
+# OP50 section ----
+# # # # # # # # # # # 
+# # # # # # # # # # # 
+# # # # # # # # # # # 
+
+
+samples.op50 = read.delim("sampleInfo_OP50.txt")
+
+files.op50 = read.samples(samp_file = 'sampleInfo_OP50.txt')
+
+# import quantification data 
+txi = tximport(files.op50, type = "salmon", tx2gene = tx2gene)
+
+
+
+# DESeq2 OP50 ---------------------------------------------------------
+ddsTxi = DESeqDataSetFromTximport(txi, colData = samples.op50, 
+                                  design = ~ Batch + Sample)
+
+# # prefilter, but that might not be necessary
+keep = rowSums(counts(ddsTxi)) >= 50
+ddsTxi = ddsTxi[keep,]
+
+ddsTxi$Sample = relevel(ddsTxi$Sample, ref = "OP50")
+
+# run the Differential Expression Analysis
+# design(ddsTxi) <- formula(~ Bacteria + Worm)
+dds = DESeq(ddsTxi)
+
+
+### tidy results
+# dds.tidy = tidy(ddsTxi, colData = samples$Sample)
+gene_counts = counts(dds, normalized = TRUE)
+gene_list = rownames(gene_counts)
+gene_counts = gene_counts %>% 
+  cbind(gene_list,.) %>% as_tibble()
+
+gene_counts = gene_counts %>% 
+  gather(Name, counts, W0L1:OP50_4) %>% 
+  dplyr::select(gene_id = gene_list, Name, counts) %>%
+  mutate(Name = as.factor(Name)) %>%
+  left_join(as_tibble(samples), by = 'Name') %>%
+  mutate(counts = as.double(counts),
+         gene_id = as.factor(gene_id),
+         Replicate = as.factor(Replicate)) %>% 
+  left_join(info) %>%
+  mutate(Sample = factor(Sample, levels = c('WT_0', 'OP50', 'WT_50', 'WTN_0', 'WTN_50',
+                                            'B_0', 'B_50', 'G_0'))) # refactor levels to show them in this order in the plots
+
+
+write_csv(gene_counts, here('summary', 'gene_counts_OP50.csv'))
+
+
+## correct for batch effect 
+## this way we can show the plots in a more nicer way
+
+gene_counts_norm = limma::removeBatchEffect(counts(dds, normalized = TRUE), dds$batch) 
+gene_list = rownames(gene_counts_norm)
+gene_counts_norm = gene_counts_norm %>% 
+  cbind(gene_list,.) %>% as_tibble()
+
+gene_counts_norm = gene_counts_norm %>% 
+  gather(Name, counts, W0L1:OP50_4) %>% 
+  dplyr::select(gene_id = gene_list, Name, counts) %>%
+  mutate(Name = as.factor(Name)) %>%
+  left_join(as_tibble(samples), by = 'Name') %>%
+  mutate(counts = as.double(counts),
+         gene_id = as.factor(gene_id),
+         Replicate = as.factor(Replicate)) %>% 
+  left_join(info) %>%
+  mutate(Sample = factor(Sample, levels = c('WT_0', 'OP50','WT_50', 'WTN_0', 'WTN_50',
+                                            'B_0', 'B_50', 'G_0'))) # refactor levels to show them in this order in the plots
+
+
+write_csv(gene_counts_norm, here('summary', 'gene_counts_batch_normalized_OP50.csv'))
+
+
+#### PCA with batch effect ####
+
+dds$batch = factor(rep(c("1", "2", "3", "4")))
+vsd = varianceStabilizingTransformation(dds)
+plotPCA(vsd, "batch")
+
+assay(vsd) = limma::removeBatchEffect(assay(vsd), vsd$batch)    
+plotPCA(vsd, intgroup = c("Sample"))
+
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'PCA_main_vsd_batch_effect_OP50.pdf'),
+             height = 8, width = 9, useDingbats = FALSE)
+
+# custom PCA plot
+
+pcaData = plotPCA(vsd, intgroup = c("Bacteria", "Metformin", "Media"), returnData = TRUE)
+pcaData
+
+names(pcaData) = c('PC1', 'PC2', 'Groups', 'Bacteria', 'Metformin','Media', 'name')
+
+
+# get info for the ellipses
+# ell = pcaData %>% group_by(Bacteria, Metformin, Media) %>% do(getellipse(.$PC1, .$PC2, 1)) %>% data.frame
+ell = pcaData %>% group_by(Groups) %>% do(getellipse(.$PC1, .$PC2, 1)) %>% data.frame
+# % of variable explained by PC1 and PC2
+percentVar = round(100 * attr(pcaData, "percentVar"))
+
+# plot!
+pcaData %>% 
+  ggplot(aes(x = PC1, y = PC2, color = Groups)) + 
+  geom_point(size = 3, show.legend = NA, alpha = 0.5) + 
+  geom_path(data = ell, aes(x = x, y = y, linetype = Groups), size = 1) +
+  geom_polygon(data = ell, aes(x = x, y = y, fill = Groups), size = 1, alpha = 0.3) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  theme_cowplot(14) 
+
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'PCA_main_vld_batch_effect_OP50.pdf'),
+             height = 8, width = 9, useDingbats = FALSE)
+
+
+
+
+
+
+
+### clusterProfiler ####
+
+library(clusterProfiler)
+library(org.Ce.eg.db)
+
+hub = AnnotationHub::AnnotationHub()
+AnnotationHub::query(hub, "griseus")
+
+Cgriseus = hub[["AH48061"]]
+
+Cgriseus
+
+# let's make our database from ensembldb 
+ah = AnnotationHub::AnnotationHub(localHub = FALSE)
+ahDb = AnnotationHub::query(ah, pattern = c("Caenorhabditis elegans", "EnsDb", 98))
+ahEdb = ahDb[['AH74964']]
+
+
+sample_gene <- sample(keys(ahEdb), 100)
+str(sample_gene) 
+
+
+# test data 
+WT.gns.up = res.WT.tidy %>% 
+  filter(padj <= 0.05, log2FoldChange >= pos) %>% drop_na(entrezid) %>% 
+  pull(entrezid) %>% unname() 
+WT.gns.down = res.WT.tidy %>% 
+  filter(padj <= 0.05, log2FoldChange <= neg) %>% drop_na(entrezid) %>% 
+  pull(entrezid) %>% unname() 
+
+
+sample_test = enrichGO(WT.gns.up, 
+                       OrgDb=org.Ce.eg.db, 
+                       pvalueCutoff=1, 
+                       qvalueCutoff=1)
+head(summary(sample_test))
+
+dotplot(sample_test, showCategory=30,
+        font.size = 5)
+
+enrichMap(sample_test, vertex.label.cex=1.2, 
+          layout=igraph::layout.kamada.kawai)
+
+
+
+gsecc <- gseGO(geneList=WT.gns.up, ont="CC", 
+               OrgDb=org.Ce.eg.db, verbose=F)
+head(summary(gsecc))
 
 
 
