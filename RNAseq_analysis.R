@@ -967,8 +967,10 @@ gene_counts%>%
 
 
 ### small function to help me
-gplot = function(genes = c('WBGene00009706'), fw_nrows = 1){
-  gene_counts_norm %>% 
+gplot = function(
+  gene_table,
+  genes = c('WBGene00009706'), fw_nrows = 1){
+  gene_table %>% 
     dplyr::filter(gene_id %in% genes) %>%
     ggplot(aes(y = counts, x = Sample)) +
     geom_boxplot(aes(fill = Sample),
@@ -986,7 +988,9 @@ gplot = function(genes = c('WBGene00009706'), fw_nrows = 1){
 
 
 
-gplot(c('WBGene00009706', 'WBGene00007864'), fw_nrows = 1)
+gplot(gene_counts_norm, c('WBGene00009706', 'WBGene00007864'), fw_nrows = 1)
+
+gplot(gene_counts_norm, c('WBGene00015574'), fw_nrows = 1)
 
 ggsave(here('summary', 'argk1_irg6_boxplot.pdf'),
        height = 5, width = 7)
@@ -1003,9 +1007,10 @@ selected_genes = results.complete %>%
   pivot_wider(names_from = Contrast, values_from = log2FoldChange) %>% 
   drop_na() 
 
-gplot(genes = selected_genes%>% pull(gene_id), fw_nrows = 4)
+gplot(gene_counts_norm, 
+      genes = selected_genes%>% pull(gene_id), fw_nrows = 4)
 
-ggsave(file = here('summary', 'genes_of_interest.pdf'),
+ggsave(file = here('summary', 'argk1_irg6_similar_genes.pdf'),
             height = 10, width = 12)
 
 
@@ -1686,6 +1691,54 @@ gsRanking(nbea.res)
 
 
 
+### clusterProfiler ####
+
+library(clusterProfiler)
+library(org.Ce.eg.db)
+
+hub = AnnotationHub::AnnotationHub()
+AnnotationHub::query(hub, "griseus")
+
+Cgriseus = hub[["AH48061"]]
+
+Cgriseus
+
+# let's make our database from ensembldb 
+ah = AnnotationHub::AnnotationHub(localHub = FALSE)
+ahDb = AnnotationHub::query(ah, pattern = c("Caenorhabditis elegans", "EnsDb", 98))
+ahEdb = ahDb[['AH74964']]
+
+
+sample_gene <- sample(keys(ahEdb), 100)
+str(sample_gene) 
+
+
+# test data 
+WT.gns.up = res.WT.tidy %>% 
+  filter(padj <= 0.05, log2FoldChange >= pos) %>% drop_na(entrezid) %>% 
+  pull(entrezid) %>% unname() 
+WT.gns.down = res.WT.tidy %>% 
+  filter(padj <= 0.05, log2FoldChange <= neg) %>% drop_na(entrezid) %>% 
+  pull(entrezid) %>% unname() 
+
+
+sample_test = enrichGO(WT.gns.up, 
+                       OrgDb=org.Ce.eg.db, 
+                       pvalueCutoff=1, 
+                       qvalueCutoff=1)
+head(summary(sample_test))
+
+dotplot(sample_test, showCategory=30,
+        font.size = 5)
+
+enrichMap(sample_test, vertex.label.cex=1.2, 
+          layout=igraph::layout.kamada.kawai)
+
+
+
+gsecc <- gseGO(geneList=WT.gns.up, ont="CC", 
+               OrgDb=org.Ce.eg.db, verbose=F)
+head(summary(gsecc))
 
 
 
@@ -1741,7 +1794,7 @@ gene_counts = gene_counts %>%
   gather(Name, counts, W0L1:OP50_4) %>% 
   dplyr::select(gene_id = gene_list, Name, counts) %>%
   mutate(Name = as.factor(Name)) %>%
-  left_join(as_tibble(samples), by = 'Name') %>%
+  left_join(as_tibble(samples.op50), by = 'Name') %>%
   mutate(counts = as.double(counts),
          gene_id = as.factor(gene_id),
          Replicate = as.factor(Replicate)) %>% 
@@ -1765,7 +1818,7 @@ gene_counts_norm = gene_counts_norm %>%
   gather(Name, counts, W0L1:OP50_4) %>% 
   dplyr::select(gene_id = gene_list, Name, counts) %>%
   mutate(Name = as.factor(Name)) %>%
-  left_join(as_tibble(samples), by = 'Name') %>%
+  left_join(as_tibble(samples.op50), by = 'Name') %>%
   mutate(counts = as.double(counts),
          gene_id = as.factor(gene_id),
          Replicate = as.factor(Replicate)) %>% 
@@ -1819,62 +1872,181 @@ dev.copy2pdf(device = cairo_pdf,
              height = 8, width = 9, useDingbats = FALSE)
 
 
+# STATS ####
+
+# get results and tidy it
+res = results(dds) 
+
+
+# results with different shape of contrasts, tidy
+
+# Wt0 - OP50
+res.opWT = results(dds,   contrast = c("Sample", "WT_0" , "OP50"))  
+res.opWT = lfcShrink(dds, contrast = c("Sample", "WT_0" , "OP50"), res = res.opWT, type = 'ashr')
+
+# gacA – OP50
+res.opGacA = results(dds,  contrast = c("Sample",  "G_0", "OP50")) 
+res.opGacA = lfcShrink(dds, contrast = c("Sample", "G_0", "OP50"), res = res.opGacA, type = 'ashr')
+
+# BioF50 – OP50
+res.opBioF = results(dds,  contrast = c("Sample",  "B_50", "OP50"))   
+res.opBioF = lfcShrink(dds, contrast = c("Sample", "B_50", "OP50"), res = res.opBioF, type = 'ashr')
+
+
+#### tidying the results #####
+# Wt0 - OP50
+res.opWT.tidy = as_tibble(res.opWT, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'opWT',
+  Media = 'LB/NGM',
+  Target = 'WT_0',
+  Reference = 'OP50',
+  Contrast_description = 'Comparison of WT_0 vs OP50') %>%
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+
+# gacA – OP50
+res.opGacA.tidy = as_tibble(res.opGacA, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'opGacA',
+  Media = 'LB/NGM',
+  Target = 'G_0',
+  Reference = 'OP50',
+  Contrast_description = 'Comparison of G_0 vs OP50') %>%
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+# Wt0 - OP50
+res.opBioF.tidy = as_tibble(res.opBioF, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'opBioF',
+  Media = 'LB/NGM',
+  Target = 'B_50',
+  Reference = 'OP50',
+  Contrast_description = 'Comparison of B_50 vs OP50') %>%
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+
+# gather all results
+results.complete.op50 = results.complete %>% rbind(res.opWT.tidy,
+                                                   res.opGacA.tidy,
+                                                   res.opBioF.tidy)
+
+
+
+# write results in excel files
+list_of_datasets = list('WT_LB/NGM' = res.WT.tidy, 
+                        'WT_NGM' = res.WTN.tidy, 
+                        'WTNmet_WT' = res.WTNmet_WT.tidy,
+                        'bioF_LB/NGM' = res.B.tidy,
+                        'bioF_0vsWT_0' = res.B_WT.tidy,
+                        'gacA_0vsWT_0' = res.G_WT.tidy,
+                        'bioF_50vsgacA_0' = res.Bmet_G.tidy,
+                        'WT_0vsbioF_50' = res.Bmet_WT.tidy,
+                        'WTN_50 vs WT_0'= res.WTNmet_WT.tidy ,
+                        'WT0 vs WTN0 (NGM effect)' = res.NGM.tidy,
+                        'WT50 vs WTN50 (NGM effect)' = res.NGM_met.tidy,
+                        'WT0 vs OP50' = res.opWT.tidy,
+                        'bioF_50 vs OP50' = res.opGacA.tidy,
+                        'gacA_0 vs OP50' = res.opBioF.tidy)
+
+
+write.xlsx(list_of_datasets, here('summary', 'complete_stats_OP50.xlsx'),
+           colNames = T, rowNames = F, overwrite = TRUE)
+
+
+write_csv(results.complete.op50, here('summary', 'complete_stats_OP50.csv'))
+
+
+# Interesting genes ####
+
+# which genes share a similar behaviour as argk-1
+
+# irg-1: WBGene00015574
+
+gplot(gene_counts_norm, 
+      genes = 'WBGene00015574')
+
+ggsave(here('summary', 'irg-1.pdf'))
+
+
+other_interesting_genes = c("WBGene00018547", "WBGene00009914", "WBGene00004001")
+
+gplot(gene_counts_norm, 
+      genes = genes_first,
+      fw_nrows = 9)
+
+
+# two steps filtering
+# 1. genes that are < 10 for gacA summary
+# 2. get genes that have log2FC: WT > bioF > gacA, and are significant
+
+# first step
+gene_summary = gene_counts_norm  %>% 
+  select(-entrezid, -width, -gene_biotype, -description) %>% 
+  group_by(Sample, gene_name, gene_id) %>% 
+  summarise(Mean = mean(counts, na.rm = T),
+            SD = sd(counts , na.rm = T))
+
+# gene_summary %>% 
+#   filter(Sample == 'G_0',
+#          Mean < 10)
+
+# a bit more comprehensive filtering
+genes_first = gene_summary %>% 
+  filter(Sample %in% c('WT_0','B_50','G_0')) %>% 
+  select(-SD) %>% 
+  pivot_wider(names_from = Sample, values_from = Mean) %>% 
+  # filter(G_0 < 10, WT_0 > 50, B_50 > 10) %>% 
+  filter(G_0 < 25) %>%
+  pull(gene_id)
+ 
+
+# second step
+
+wt.bioF_genes = results.complete %>% 
+  filter(Contrast %in% c('Bmet_WT')) %>% 
+  filter(gene_id %in% genes_first, padj < 0.05, Direction == 'Down') %>% 
+  pull(gene_id)
+  
+
+bioF.gacA_genes = results.complete %>% 
+  filter(Contrast %in% c('Bmet_G')) %>% 
+  filter(gene_id %in% genes_first, padj < 0.05, Direction == 'Up') %>% 
+  pull(gene_id)
+
+
+irg1_genes.like = intersect(wt.bioF_genes, bioF.gacA_genes)
 
 
 
 
+# lite version of gene set
+gplot(gene_counts_norm %>% filter(Sample %in% c('WT_0','B_50','G_0')), 
+      genes = irg1_genes.like, fw_nrows = 8)
 
-### clusterProfiler ####
+ggsave(file = here('summary', 'genes_like_irg1_lite.pdf'),
+       height = 10, width = 15)
 
-library(clusterProfiler)
-library(org.Ce.eg.db)
+# complete version
+gplot(gene_counts_norm, 
+      genes = irg1_genes.like, fw_nrows = 8)
 
-hub = AnnotationHub::AnnotationHub()
-AnnotationHub::query(hub, "griseus")
-
-Cgriseus = hub[["AH48061"]]
-
-Cgriseus
-
-# let's make our database from ensembldb 
-ah = AnnotationHub::AnnotationHub(localHub = FALSE)
-ahDb = AnnotationHub::query(ah, pattern = c("Caenorhabditis elegans", "EnsDb", 98))
-ahEdb = ahDb[['AH74964']]
-
-
-sample_gene <- sample(keys(ahEdb), 100)
-str(sample_gene) 
-
-
-# test data 
-WT.gns.up = res.WT.tidy %>% 
-  filter(padj <= 0.05, log2FoldChange >= pos) %>% drop_na(entrezid) %>% 
-  pull(entrezid) %>% unname() 
-WT.gns.down = res.WT.tidy %>% 
-  filter(padj <= 0.05, log2FoldChange <= neg) %>% drop_na(entrezid) %>% 
-  pull(entrezid) %>% unname() 
-
-
-sample_test = enrichGO(WT.gns.up, 
-                       OrgDb=org.Ce.eg.db, 
-                       pvalueCutoff=1, 
-                       qvalueCutoff=1)
-head(summary(sample_test))
-
-dotplot(sample_test, showCategory=30,
-        font.size = 5)
-
-enrichMap(sample_test, vertex.label.cex=1.2, 
-          layout=igraph::layout.kamada.kawai)
+ggsave(file = here('summary', 'genes_like_irg1_complete.pdf'),
+       height = 13, width = 21)
 
 
 
-gsecc <- gseGO(geneList=WT.gns.up, ont="CC", 
-               OrgDb=org.Ce.eg.db, verbose=F)
-head(summary(gsecc))
-
-
-
+write.table(c('Wormbase ID', irg1_genes.like), 'irg1_like_genes.txt',
+            quote = F, row.names = F, col.names = F)
 
 
 
