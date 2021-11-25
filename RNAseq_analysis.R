@@ -1722,14 +1722,16 @@ WT.gns.down = res.WT.tidy %>%
   pull(entrezid) %>% unname() 
 
 
-sample_test = enrichGO(WT.gns.up, 
+sample_test = enrichGO(WT.gns.down, 
                        OrgDb=org.Ce.eg.db, 
-                       pvalueCutoff=1, 
-                       qvalueCutoff=1)
+                       pvalueCutoff=0.05, 
+                       qvalueCutoff=0.05,
+                       ont = 'BP')
+
 head(summary(sample_test))
 
 dotplot(sample_test, showCategory=30,
-        font.size = 5)
+        font.size = 15)
 
 enrichMap(sample_test, vertex.label.cex=1.2, 
           layout=igraph::layout.kamada.kawai)
@@ -1739,6 +1741,10 @@ enrichMap(sample_test, vertex.label.cex=1.2,
 gsecc <- gseGO(geneList=WT.gns.up, ont="CC", 
                OrgDb=org.Ce.eg.db, verbose=F)
 head(summary(gsecc))
+
+
+
+
 
 
 
@@ -1967,6 +1973,26 @@ write_csv(results.complete.op50, here('summary', 'complete_stats_OP50.csv'))
 
 
 # Interesting genes ####
+
+
+# which genes share a similar behaviour as argk-1
+
+selected_genes = results.complete %>% 
+  filter(Contrast %in% c('WT', 'WTN', 'bioF')) %>% 
+  filter(padj < 0.05, Direction == 'Up', log2FoldChange > 1) %>% 
+  select(gene_name, gene_id, Contrast, log2FoldChange) %>% 
+  pivot_wider(names_from = Contrast, values_from = log2FoldChange) %>% 
+  drop_na() 
+
+gplot(gene_counts_norm, 
+      genes = selected_genes%>% pull(gene_id), fw_nrows = 4)
+
+ggsave(file = here('summary', 'argk1_irg6_similar_genes.pdf'),
+       height = 10, width = 13)
+
+
+
+
 
 # which genes share a similar behaviour as argk-1
 
