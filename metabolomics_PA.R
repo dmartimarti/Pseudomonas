@@ -98,7 +98,8 @@ norm_ms_data %>%
 metabs =  
   read_xlsx( here('data', 
                           'Annotated_compounds_pseudomonas_test.xlsx')) %>%
-  select(-Checked, -Tags, -`Annot. Source: Predicted Compositions`:-`Annot. DeltaMass [ppm]`, 
+  select(-Checked, -Tags, 
+         -`Annot. Source: Predicted Compositions`:-`Annot. DeltaMass [ppm]`, 
          -`# ChemSpider Results`:-`# mzVault Results`,
          -`mzCloud Best Match`:-`Reference Ion`,
          -`RT [min]`, -`Area (Max.)`,
@@ -134,7 +135,8 @@ metabs_nondup = metabs %>%
             {paste0(Name)},
          .before = Formula
          ) %>% 
-  select(-rep)
+  select(-rep) %>% 
+  ungroup
 
 
 
@@ -179,9 +181,141 @@ metabs_long
 
 
 
+# heatmaps for Jen --------------------------------------------------------
+
+library(ComplexHeatmap)
+
+selected_metabolites = read_excel("data/Copy of Annotated_compounds_pseudomonas_test.xlsx", 
+                                  sheet = "Sheet1") %>% 
+  pull(Compound)
+
+selected_metabolites = unique(selected_metabolites)
+
+metabs_df = metabs_nondup %>% 
+  filter(Name %in% selected_metabolites) %>% 
+  select(Name_unique, LB_WT_50:LB_WT_0) %>% 
+  as.data.frame
+
+# get compound names in order
+metabs_df_names = metabs_df$Name_unique
+# remove first column
+metabs_df[,1]  = NULL
+# convert to log2 values
+metabs_df = log2(metabs_df)
+# extract control values
+controls = metabs_df$NGM_WT_0
+# sustract the controls (log(A/B) == log(A) - log(B))
+metabs_df = metabs_df - controls
+# place names as rownames
+rownames(metabs_df) = metabs_df_names
+metabs_df = as.matrix(metabs_df)
+
+# general view of the heatmap
+Heatmap(metabs_df)
 
 
 
 
+### control matrix #####
 
+colnames(metabs_df)
+
+control_matrix = metabs_df[,c('NGM_WT_0', 'NGM_BioF_0', 'NGM_GacA_0', 
+                              'LB_WT_0', 'LB_GacA_0',
+                              'NGM_WT_50', 'NGM_BioF_50', 'NGM_GacA_50',
+                              'LB_GacA_50')]
+
+colnames(control_matrix) = c('WT', 'BioF', 'GacA', 'WT', 'GacA',
+                             'WT', 'BioF', 'GacA','GacA')
+
+ha = HeatmapAnnotation(
+  Media = c('NGM','NGM','NGM','LB','LB',
+            'NGM','NGM','NGM','LB'),
+  Metformin = c(rep('Metformin',5),
+                rep('Control', 4)),
+  col = list(
+    Media = c('NGM' = '#2180D9', 'LB' = '#D99321'),
+    Metformin = c('Metformin' = '#D921B7', 'Control' = '#30C600')
+  )
+)
+
+Heatmap(control_matrix,
+        name = 'log2FC',
+        cluster_columns = F,
+        top_annotation = ha,
+        row_names_side = "left",
+        row_dend_side = "right",
+        row_names_gp = gpar(fontsize = 8),
+        row_names_max_width = max_text_width(
+          rownames(control_matrix), 
+          gp = gpar(fontsize = 6)
+        ))
+
+
+quartz.save(file = 'Big_heatmap.pdf',
+            type = 'pdf', dpi = 300, height = 15, width = 9)
+
+
+
+### control matrix compact #####
+
+metabs_df = metabs_nondup %>% 
+  filter(Name %in% selected_metabolites) %>% 
+  select(-calc_MW, -`m/z`) %>% 
+  group_by(Name) %>% 
+  summarise_if(is.numeric, mean, na.rm = T) %>% 
+  rename(Name_unique = Name) %>% 
+  as.data.frame
+
+# get compound names in order
+metabs_df_names = metabs_df$Name_unique
+# remove first column
+metabs_df[,1]  = NULL
+# convert to log2 values
+metabs_df = log2(metabs_df)
+# extract control values
+controls = metabs_df$NGM_WT_0
+# sustract the controls (log(A/B) == log(A) - log(B))
+metabs_df = metabs_df - controls
+# place names as rownames
+rownames(metabs_df) = metabs_df_names
+metabs_df = as.matrix(metabs_df)
+
+
+colnames(metabs_df)
+
+control_matrix = metabs_df[,c('NGM_WT_0', 'NGM_BioF_0', 'NGM_GacA_0', 
+                              'LB_WT_0', 'LB_GacA_0',
+                              'NGM_WT_50', 'NGM_BioF_50', 'NGM_GacA_50',
+                              'LB_GacA_50')]
+
+colnames(control_matrix) = c('WT', 'BioF', 'GacA', 'WT', 'GacA',
+                             'WT', 'BioF', 'GacA','GacA')
+
+ha = HeatmapAnnotation(
+  Media = c('NGM','NGM','NGM','LB','LB',
+            'NGM','NGM','NGM','LB'),
+  Metformin = c(rep('Metformin',5),
+                rep('Control', 4)),
+  col = list(
+    Media = c('NGM' = '#2180D9', 'LB' = '#D99321'),
+    Metformin = c('Metformin' = '#D921B7', 'Control' = '#30C600')
+  )
+)
+
+Heatmap(control_matrix,
+        name = 'log2FC',
+        cluster_columns = F,
+        top_annotation = ha,
+        row_names_side = "left",
+        row_dend_side = "right",
+        row_names_gp = gpar(fontsize = 8),
+        row_names_max_width = max_text_width(
+          rownames(control_matrix), 
+          gp = gpar(fontsize = 4.5)
+          ))
+
+
+quartz.save(file = 'compact_heatmap.pdf',
+            type = 'pdf', dpi = 300, height = 11, width = 10)
 
