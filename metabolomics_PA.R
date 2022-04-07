@@ -231,8 +231,8 @@ colnames(control_matrix) = c('WT', 'BioF', 'GacA', 'WT', 'GacA',
 ha = HeatmapAnnotation(
   Media = c('NGM','NGM','NGM','LB','LB',
             'NGM','NGM','NGM','LB'),
-  Metformin = c(rep('Metformin',5),
-                rep('Control', 4)),
+  Metformin = c(rep('Control',5),
+                rep('Metformin', 4)),
   col = list(
     Media = c('NGM' = '#2180D9', 'LB' = '#D99321'),
     Metformin = c('Metformin' = '#D921B7', 'Control' = '#30C600')
@@ -295,8 +295,8 @@ colnames(control_matrix) = c('WT', 'BioF', 'GacA', 'WT', 'GacA',
 ha = HeatmapAnnotation(
   Media = c('NGM','NGM','NGM','LB','LB',
             'NGM','NGM','NGM','LB'),
-  Metformin = c(rep('Metformin',5),
-                rep('Control', 4)),
+  Metformin = c(rep('Control',5),
+                rep('Metformin', 4)),
   col = list(
     Media = c('NGM' = '#2180D9', 'LB' = '#D99321'),
     Metformin = c('Metformin' = '#D921B7', 'Control' = '#30C600')
