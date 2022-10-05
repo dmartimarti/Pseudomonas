@@ -113,3 +113,198 @@ sink()
 write.xlsx(plates_list, 'PA_transposon_library_multipage.xlsx',
            overwrite = T,
            row.names = T)
+
+
+
+
+# B. subtilis library ----------------------------------------------------
+
+# 05/10/2022
+# Jen asked me to do the same with this B. subtilis library
+# put it in 384 and 96 plate format 
+
+# read the table
+bsub = read_excel("B.subtilis library.xlsx", 
+                  sheet = "BKK_2017_for distribution") %>% 
+  rename(gene_name = `Gene name`, 
+         strain_name = `Strain name`,
+         locus_tag = `Locus tag`,
+         supplement = `supplement for better growth`)
+
+# are there any NAs in the gene names? 
+bsub %>% 
+  filter(is.na(gene_name))
+
+# fill NA with well_plate info
+bsub = bsub %>% 
+  mutate(gene_name = case_when(is.na(gene_name) ~ paste(Plate, well, sep = '_'),
+                               TRUE ~ gene_name))
+
+
+## 96 well format -------
+# initialise variables
+plates = unique(bsub$Plate)
+row_names = LETTERS[1:8]
+col_names = seq(1,12)
+
+plates_list = list()
+for (plate in plates) {
+  
+  plate_name = as.character(plate)
+  
+  temp_ids = bsub %>% 
+    mutate(Column = str_extract(well, '\\w'),
+           Row = str_extract(well, '\\d{1,}'),
+           .before=strain_name) %>% 
+    filter(Plate == plate) %>% 
+    mutate(Row = as.numeric(Row)) %>% 
+    arrange(Column, Row) %>% 
+    pull(gene_name) 
+  
+  temp_matrix = matrix(data = temp_ids, 
+                       nrow = 8, ncol = 12, byrow = T)
+  
+  rownames(temp_matrix) = row_names
+  colnames(temp_matrix) = col_names
+  
+  temp_list = list(plate_name = temp_matrix)
+  
+  plates_list = append(plates_list, temp_list)
+}
+
+# fix naming of plates in list
+names(plates_list) = plates
+
+#check that it's ok
+plates_list
+
+sink("Bsubtilis_96format_onepage.csv", type="output")
+invisible(lapply(names(plates_list), 
+                 function(x) { print(x)
+                   dput(write.csv(plates_list[[x]])) } ))
+sink()
+
+
+write.xlsx(plates_list, 'Bsubtilis_96format_multipage.xlsx',
+           overwrite = T,
+           row.names = T)
+
+
+
+## 384 well format -------
+
+# import the info of the new plates
+
+bsub_384 = read_excel("B.subtilis library.xlsx", 
+                       sheet = "384 format") %>% 
+  drop_na() %>% 
+  rename(Plate_384 = `384 Plate name`,
+         Plate = `...3`)
+
+# as we are transferring things from a 96 to a 384 format, positions will be 
+# displaced from the origin. The first top half of the 384 plate will consist on 
+# plates 1 and 2 of the 96, and the second bottom half will be from plates 
+# 3 and 4. 
+# The positions of plate A1 will be: A1, A3, A5...
+# The positions of plate A2 will be: A2, A4, A6...
+# The positions of plate B1 will be: I1, I3, I5...
+# The positions of plate B2 will be: I2, I4, I6...
+
+
+# create vectors with new positions
+
+### ORIGIN ------
+row_names = LETTERS[1:8]
+col_names = seq(1,12, 1) 
+origin_wells = expand_grid(row_names, col_names) %>% 
+  # this line is because the format of wells is A01 instead of A1
+  mutate(col_names = str_pad(col_names, pad=0, width = 2, side ='left')) %>% 
+  unite(well,  row_names:col_names, sep = '')
+
+### plate A1 ------
+row_names = LETTERS[1:8]
+col_names = seq(1,24, 2) # odd numbers
+A1_wells = expand_grid(row_names, col_names) %>% 
+  mutate(col_names = str_pad(col_names, pad=0, width = 2, side ='left')) %>% 
+  unite(well_A1,  row_names:col_names, sep = '')
+
+### plate A2 ------
+row_names = LETTERS[1:8]
+col_names = seq(2,24, 2) # even numbers
+A2_wells = expand_grid(row_names, col_names) %>% 
+  mutate(col_names = str_pad(col_names, pad=0, width = 2, side ='left')) %>% 
+  unite(well_A2,  row_names:col_names, sep = '')
+
+
+### plate B1 ------
+row_names = LETTERS[9:16] # second subset of letters
+col_names = seq(1,24, 2) # odd numbers
+B1_wells = expand_grid(row_names, col_names) %>% 
+  mutate(col_names = str_pad(col_names, pad=0, width = 2, side ='left')) %>% 
+  unite(well_B1,  row_names:col_names, sep = '')
+
+### plate B2 ------
+row_names = LETTERS[9:16]
+col_names = seq(2,24, 2) # even numbers
+B2_wells = expand_grid(row_names, col_names) %>% 
+  mutate(col_names = str_pad(col_names, pad=0, width = 2, side ='left')) %>% 
+  unite(well_B2,  row_names:col_names, sep = '')
+
+
+positions = bind_cols(origin_wells, 
+                      A1_wells,
+                      A2_wells,
+                      B1_wells,
+                      B2_wells)
+
+
+
+# modify the well info 
+bsub = bsub %>% 
+  left_join(bsub_384) %>% 
+  left_join(positions) %>% 
+  mutate(well = case_when(Arrangement == 'Position A1' ~ well_A1,
+                          Arrangement == 'Position A2' ~ well_A2,
+                          Arrangement == 'Position B1' ~ well_B1,
+                          Arrangement == 'Position B2' ~ well_B2))
+
+
+# initialise variables
+plates = unique(bsub$Plate_384)
+row_names = LETTERS[1:16]
+col_names = seq(1,24)
+
+plates_list = list()
+for (plate in plates) {
+  
+  plate_name = as.character(plate)
+  
+  temp_ids = bsub %>% 
+    mutate(Column = str_extract(well, '\\w'),
+           Row = str_extract(well, '\\d{1,}'),
+           .before=strain_name) %>% 
+    filter(Plate == plate) %>% 
+    mutate(Row = as.numeric(Row)) %>% 
+    arrange(Column, Row) %>% 
+    pull(gene_name) 
+  
+  temp_matrix = matrix(data = temp_ids, 
+                       nrow = 8, ncol = 12, byrow = T)
+  
+  rownames(temp_matrix) = row_names
+  colnames(temp_matrix) = col_names
+  
+  temp_list = list(plate_name = temp_matrix)
+  
+  plates_list = append(plates_list, temp_list)
+}
+
+# fix naming of plates in list
+names(plates_list) = plates
+
+#check that it's ok
+plates_list
+
+
+
+
