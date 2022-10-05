@@ -178,6 +178,7 @@ names(plates_list) = plates
 #check that it's ok
 plates_list
 
+### save files ####
 sink("Bsubtilis_96format_onepage.csv", type="output")
 invisible(lapply(names(plates_list), 
                  function(x) { print(x)
@@ -210,7 +211,9 @@ bsub_384 = read_excel("B.subtilis library.xlsx",
 # The positions of plate B1 will be: I1, I3, I5...
 # The positions of plate B2 will be: I2, I4, I6...
 
-
+# the strategy is to create vectors with the new positions, join them to the
+# original DF and then change the coordinates for the new ones. Then
+# repeat the previous loop
 # create vectors with new positions
 
 ### ORIGIN ------
@@ -269,6 +272,9 @@ bsub = bsub %>%
                           Arrangement == 'Position B2' ~ well_B2))
 
 
+bsub = bsub %>% 
+  select(Plate, Plate_384, well, gene_name)
+
 # initialise variables
 plates = unique(bsub$Plate_384)
 row_names = LETTERS[1:16]
@@ -282,14 +288,14 @@ for (plate in plates) {
   temp_ids = bsub %>% 
     mutate(Column = str_extract(well, '\\w'),
            Row = str_extract(well, '\\d{1,}'),
-           .before=strain_name) %>% 
-    filter(Plate == plate) %>% 
+           .before=well) %>% 
+    filter(Plate_384 == plate) %>% 
     mutate(Row = as.numeric(Row)) %>% 
     arrange(Column, Row) %>% 
     pull(gene_name) 
   
   temp_matrix = matrix(data = temp_ids, 
-                       nrow = 8, ncol = 12, byrow = T)
+                       nrow = 16, ncol = 24, byrow = T)
   
   rownames(temp_matrix) = row_names
   colnames(temp_matrix) = col_names
@@ -306,5 +312,16 @@ names(plates_list) = plates
 plates_list
 
 
+### save files ####
+sink("BSubtilis/Bsubtilis_384format_onepage.csv", type="output")
+invisible(lapply(names(plates_list), 
+                 function(x) { print(x)
+                   dput(write.csv(plates_list[[x]])) } ))
+sink()
+
+
+write.xlsx(plates_list, 'BSubtilis/Bsubtilis_384format_multipage.xlsx',
+           overwrite = T,
+           row.names = T)
 
 
