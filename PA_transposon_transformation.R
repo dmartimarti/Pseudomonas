@@ -225,14 +225,14 @@ origin_wells = expand_grid(row_names, col_names) %>%
   unite(well,  row_names:col_names, sep = '')
 
 ### plate A1 ------
-row_names = LETTERS[1:8]
+row_names = LETTERS[seq(1,16,2)]
 col_names = seq(1,24, 2) # odd numbers
 A1_wells = expand_grid(row_names, col_names) %>% 
   mutate(col_names = str_pad(col_names, pad=0, width = 2, side ='left')) %>% 
   unite(well_A1,  row_names:col_names, sep = '')
 
 ### plate A2 ------
-row_names = LETTERS[1:8]
+row_names = LETTERS[seq(1,16,2)]
 col_names = seq(2,24, 2) # even numbers
 A2_wells = expand_grid(row_names, col_names) %>% 
   mutate(col_names = str_pad(col_names, pad=0, width = 2, side ='left')) %>% 
@@ -240,14 +240,14 @@ A2_wells = expand_grid(row_names, col_names) %>%
 
 
 ### plate B1 ------
-row_names = LETTERS[9:16] # second subset of letters
+row_names = LETTERS[seq(2,16,2)] # second subset of letters
 col_names = seq(1,24, 2) # odd numbers
 B1_wells = expand_grid(row_names, col_names) %>% 
   mutate(col_names = str_pad(col_names, pad=0, width = 2, side ='left')) %>% 
   unite(well_B1,  row_names:col_names, sep = '')
 
 ### plate B2 ------
-row_names = LETTERS[9:16]
+row_names = LETTERS[seq(2,16,2)]
 col_names = seq(2,24, 2) # even numbers
 B2_wells = expand_grid(row_names, col_names) %>% 
   mutate(col_names = str_pad(col_names, pad=0, width = 2, side ='left')) %>% 
@@ -272,8 +272,8 @@ bsub = bsub %>%
                           Arrangement == 'Position B2' ~ well_B2))
 
 
-bsub = bsub %>% 
-  select(Plate, Plate_384, well, gene_name)
+# bsub = bsub %>% 
+#   select(Plate, Plate_384, well, gene_name)
 
 # initialise variables
 plates = unique(bsub$Plate_384)
