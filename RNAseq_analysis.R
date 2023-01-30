@@ -14,7 +14,7 @@
 
 
 ### libraries ####
-library(tximport)
+# library(tximport)
 library(tidyverse)
 library(DESeq2)
 # notice that DESeq2 library masks 'rename' function from dplyr 
@@ -346,7 +346,8 @@ pcaData %>%
   ggplot(aes(x = PC1, y = PC2, color = Groups)) + 
   geom_point(size = 3, show.legend = NA, alpha = 0.5) + 
   geom_path(data = ell, aes(x = x, y = y, linetype = Groups), size = 1) +
-  geom_polygon(data = ell, aes(x = x, y = y, fill = Groups), size = 1, alpha = 0.3) +
+  geom_polygon(data = ell, aes(x = x, y = y, fill = Groups), linewidth = 1, alpha = 0.3) +
+  # geom_label(aes(label = Groups), alpha = 0.3) +
   xlab(paste0("PC1: ", percentVar[1], "% variance")) +
   ylab(paste0("PC2: ", percentVar[2], "% variance")) +
   theme_cowplot(14) 
@@ -354,6 +355,116 @@ pcaData %>%
 dev.copy2pdf(device = cairo_pdf,
              file = here('summary', 'PCA_main_vld_batch_effect.pdf'),
              height = 8, width = 9, useDingbats = FALSE)
+
+
+
+
+## PCA of media in WT #################
+
+wt_samples = samples %>% filter(Bacteria == 'WT') %>% pull(Name)
+
+
+dds_WT = dds[,colnames(dds) %in% wt_samples]
+
+
+dds_WT$batch = factor(rep(c("1", "2", "3", "4")))
+vsd_WT = varianceStabilizingTransformation(dds_WT)
+plotPCA(vsd_WT, "batch")
+
+assay(vsd_WT) = limma::removeBatchEffect(assay(vsd_WT), vsd_WT$batch)    
+plotPCA(vsd_WT, intgroup = c("Sample"))
+
+
+
+# custom PCA plot
+
+pcaData = plotPCA(vsd_WT, intgroup = c("Metformin", "Media"), returnData = TRUE)
+pcaData
+
+names(pcaData) = c('PC1', 'PC2', 'Groups', 'Metformin','Media', 'name')
+
+# get info for the ellipses
+# ell = pcaData %>% group_by(Bacteria, Metformin, Media) %>% do(getellipse(.$PC1, .$PC2, 1)) %>% data.frame
+ell = pcaData %>% group_by(Groups) %>% do(getellipse(.$PC1, .$PC2, 1)) %>% data.frame
+# % of variable explained by PC1 and PC2
+percentVar = round(100 * attr(pcaData, "percentVar"))
+
+# plot!
+colors = c('#D6B249', '#5E74D6')
+pcaData %>% 
+  mutate(Metformin = factor(Metformin, levels = c(0, 50))) %>% 
+  ggplot(aes(x = PC1, y = PC2, fill = Media)) + 
+  geom_point(size = 3, show.legend = NA, alpha = 0.5) + 
+  stat_ellipse(aes(linetype = Metformin), 
+               geom = 'polygon', color = 'black', alpha = 0.4) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  scale_fill_manual(values = colors) +
+  scale_color_manual(values = colors) +
+  theme_cowplot(14) 
+
+
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'PCA_MEDIA_vld_batch_effect.pdf'),
+             height = 8, width = 9, useDingbats = FALSE)
+
+
+
+
+
+## PCA of media in WT #################
+samples
+wt_samples = samples.op50 %>% filter(Media != 'NGM') %>% pull(Name)
+wt_samples = c(wt_samples, 'OP50_1', 'OP50_2', 'OP50_3', 'OP50_4')
+
+dds_WT = dds[,colnames(dds) %in% wt_samples]
+
+
+dds_WT$batch = factor(rep(c("1", "2", "3", "4")))
+vsd_WT = varianceStabilizingTransformation(dds_WT)
+plotPCA(vsd_WT, "batch")
+
+assay(vsd_WT) = limma::removeBatchEffect(assay(vsd_WT), vsd_WT$batch)    
+plotPCA(vsd_WT, intgroup = c("Sample"))
+
+
+
+# custom PCA plot
+
+pcaData = plotPCA(vsd_WT, intgroup = c("Bacteria", "Metformin"), returnData = TRUE)
+pcaData
+
+names(pcaData) = c('PC1', 'PC2', 'Groups','Bacteria',  'Metformin', 'name')
+
+# get info for the ellipses
+# ell = pcaData %>% group_by(Bacteria, Metformin, Media) %>% do(getellipse(.$PC1, .$PC2, 1)) %>% data.frame
+ell = pcaData %>% group_by(Bacteria, Metformin) %>% do(getellipse(.$PC1, .$PC2, 1)) %>% data.frame
+# % of variable explained by PC1 and PC2
+percentVar = round(100 * attr(pcaData, "percentVar"))
+
+ell = ell %>% 
+  as_tibble() %>% 
+  mutate(Metformin = factor(Metformin, levels = c(0, 50)))
+
+# plot!
+colors = c('#8439D4', '#D45015','#D4D320','#2AD4BF')
+pcaData %>% 
+  mutate(Metformin = factor(Metformin, levels = c(0, 50)),
+         Bacteria = as.factor(Bacteria)) %>% 
+  ggplot(aes(x = PC1, y = PC2, color = Bacteria, fill = Bacteria)) +
+  stat_ellipse(aes(linetype = Metformin), geom = 'polygon', color = 'black', alpha = 0.4) +
+  geom_point(size = 3,  alpha = 0.5) + 
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  scale_fill_manual(values = colors) +
+  scale_color_manual(values = colors) +
+  scale_linetype_manual(values = c('solid', 'dashed'),
+                        name = 'Metformin') +
+  theme_cowplot(14) 
+
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'PCA_GENOTYPE_vld_batch_effect.pdf'),
+             height = 7, width = 9, useDingbats = FALSE)
 
 
 
