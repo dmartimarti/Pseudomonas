@@ -492,6 +492,10 @@ res.B = lfcShrink(dds, contrast = c("Sample", "B_50", "B_0"), res = res.B, type 
 res.B_WT = results(dds, contrast = c("Sample",   "B_0", "WT_0")) 
 res.B_WT = lfcShrink(dds, contrast = c("Sample", "B_0", "WT_0"), res = res.B_WT, type = 'ashr')
 
+# B_50 - WT_50
+res.B_WT50 = results(dds, contrast = c("Sample",   "B_50", "WT_50")) 
+res.B_WT50 = lfcShrink(dds, contrast = c("Sample", "B_50", "WT_50"), res = res.B_WT50, type = 'ashr')
+
 # G_0 - WT_0
 res.G_WT = results(dds, contrast = c("Sample",   "G_0", "WT_0")) 
 res.G_WT = lfcShrink(dds, contrast = c("Sample", "G_0", "WT_0"), res = res.G_WT, type = 'ashr')
@@ -572,6 +576,19 @@ res.B_WT.tidy = as_tibble(res.B_WT, rownames = 'gene_id') %>% mutate(
   Reference = 'WT_0',
   Contrast_description = 'Comparison of bioF_0 vs WT_0 in LB/NGM') %>%
   # mutate(entrezid = unlist(entrezid)) %>% 
+  left_join(info) %>%
+  mutate(entrezid = unlist(entrezid)) %>% 
+  dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
+
+# B_50 - WT_50
+res.B_WT50.tidy = as_tibble(res.B_WT50, rownames = 'gene_id') %>% mutate(
+  p_adj_stars = gtools::stars.pval(padj),
+  Direction = ifelse(log2FoldChange > 0, 'Up', 'Down'),
+  Contrast = 'B_WT50',
+  Media = 'LB/NGM',
+  Target = 'B_50',
+  Reference = 'WT_50',
+  Contrast_description = 'Comparison of bioF_50 vs WT_50 in LB/NGM') %>%
   left_join(info) %>%
   mutate(entrezid = unlist(entrezid)) %>% 
   dplyr::select(Contrast_description, Contrast, gene_id, gene_name, everything())
@@ -665,6 +682,7 @@ res.NGM_met.tidy = as_tibble(res.NGM_met, rownames = 'gene_id') %>% mutate(
 # gather all results
 results.complete = res.WT.tidy %>% rbind(res.WTN.tidy,res.WTNmet_WT.tidy, 
                                          res.B.tidy, res.B_WT.tidy,
+                                         res.B_WT50.tidy,
                                          res.G_WT.tidy,
                                          res.Bmet_G.tidy, res.Bmet_WT.tidy,
                                          res.NGM.tidy, res.NGM_met.tidy)
@@ -677,6 +695,7 @@ list_of_datasets = list('WT_LB/NGM' = res.WT.tidy,
                         'WTNmet_WT' = res.WTNmet_WT.tidy,
                         'bioF_LB/NGM' = res.B.tidy,
                         'bioF_0vsWT_0' = res.B_WT.tidy,
+                        'bioF_50vsWT_50' = res.B_WT50.tidy,
                         'gacA_0vsWT_0' = res.G_WT.tidy,
                         'bioF_50vsgacA_0' = res.Bmet_G.tidy,
                         'WT_0vsbioF_50' = res.Bmet_WT.tidy,
@@ -723,6 +742,12 @@ plotMA(res.B_WT,  ylim=c(-3,3),  alpha = 0.05)
 dev.copy2pdf(device = cairo_pdf,
              file = here('summary', 'MAplot_B_WT.pdf'),
              height = 8, width = 11, useDingbats = FALSE)
+
+plotMA(res.B_WT50,  ylim=c(-3,3),  alpha = 0.05)
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'MAplot_B_WT50.pdf'),
+             height = 8, width = 11, useDingbats = FALSE)
+
 
 plotMA(res.G_WT,  ylim=c(-3,3),  alpha = 0.05)
 dev.copy2pdf(device = cairo_pdf,
@@ -1055,7 +1080,7 @@ dev.copy2pdf(device = cairo_pdf,
 
 
 # argK-1 
-gns = c('WBGene00009706')
+gns = c('WBGene00000782')
 
 gene_counts%>%
   dplyr::filter(gene_id %in% gns) %>%
@@ -1101,7 +1126,7 @@ gplot = function(
 
 gplot(gene_counts_norm, c('WBGene00009706', 'WBGene00007864'), fw_nrows = 1)
 
-gplot(gene_counts_norm, c('WBGene00015574'), fw_nrows = 1)
+gplot(gene_counts_norm, c('WBGene00006928'), fw_nrows = 1)
 
 ggsave(here('summary', 'argk1_irg6_boxplot.pdf'),
        height = 5, width = 7)
@@ -1357,6 +1382,10 @@ gene_sets = function(
 }
 
 
+results.complete %>% 
+  distinct(Contrast, Contrast_description) %>% 
+  write_csv('summary/contrast_description.csv')
+
 
 # loop to get the gene sets from the different contrasts
 study_contrasts = unique(results.complete$Contrast)
@@ -1390,9 +1419,13 @@ list_of_genes = list()
 for (contrast in study_contrasts){
   up = c('Wormbase ID',gene_sets(contrast=contrast,
                                  ID = 'gene_id',
+                                 fc_thres_pos = 0,
+                                 base_thres = 10,
                                  head = 5000)[[1]])
   down = c('Wormbase ID', gene_sets(contrast=contrast,
                                     ID = 'gene_id',
+                                    fc_thres_neg = -0,
+                                    base_thres = 10,
                                     head = 5000)[[2]])
   
   list_of_genes[[glue::glue('{contrast}_UP')]] = up
@@ -1401,19 +1434,22 @@ for (contrast in study_contrasts){
 }
 
 
+
 write.xlsx(list_of_genes, here('summary', 'multi_gene_wormcat.xlsx'),
            overwrite = TRUE)
 
 
 #### Plot wormcat results ####
 library(readxl)
-cat1 = read_excel("summary/Wormcat/Out_Nov-22-2021-10_26_25-multi_gene_wormcat.xlsx", 
+
+cat_file = 'Out_Feb-01-2023-16_58_26-multi_gene_wormcat.xlsx'
+cat1 = read_excel(glue("summary/Wormcat/{cat_file}"), 
                   sheet = "Cat1")
 
-cat2 = read_excel("summary/Wormcat/Out_Nov-22-2021-10_26_25-multi_gene_wormcat.xlsx", 
+cat2 = read_excel(glue("summary/Wormcat/{cat_file}"), 
                   sheet = "Cat2")
 
-cat3 = read_excel("summary/Wormcat/Out_Nov-22-2021-10_26_25-multi_gene_wormcat.xlsx", 
+cat3 = read_excel(glue("summary/Wormcat/{cat_file}"), 
                   sheet = "Cat3")
 
 
@@ -1571,6 +1607,143 @@ for (contrast in study_contrasts){
 }
 
 
+
+
+#### paper plots -------------------------------------------------------------
+
+##### WT in NGM and LB/NGM #####
+
+# Jen told me to plot enrichment analysis for WT (+/- metformin) for both media
+# used: NGM and LB/NGM
+# contrasts to plot: WT and WTN
+# I will plot cat 2 from wormcat
+# IMPORTANT: the gene sets were obtained after applying a base_thres of 10, and 
+# no threshold for the foldchange. This is because this specific comparison is 
+# weird, by its PCA it seems that LB/NGM samples are more separated than NGM
+# but then we find more significant genes for the NGM. However, the log2FC
+# of the LB/NGM is usually greater than in the NGM
+
+wt_cat2 = cat2 %>% 
+  select(cat_2 = `Category 2`, Count, starts_with('WT_')) %>% 
+  pivot_longer(cols = ends_with('_RGS'), names_to = 'RGS', values_to = 'RGS_counts') %>% 
+  pivot_longer(cols = ends_with('_Pvalue'), names_to = 'PValue_class', values_to = 'Pval') %>% 
+  filter(
+    (grepl('_UP', RGS) & grepl('_UP', PValue_class)) |
+      (grepl('_DOWN', RGS) & grepl('_DOWN', PValue_class)) # fixes weird stuff happening here
+  ) %>% 
+  arrange(cat_2) %>% 
+  mutate(RGS = case_when(grepl('_DOWN', RGS) ~ 'DOWN',
+                         grepl('_UP', RGS) ~ 'UP'),
+         Pval = as.numeric(Pval),
+         RGS_mod = RGS_counts * Pval/Pval, # trick to convert non-sig in NAs
+         log10pval = -log10(Pval),
+         Contrast = 'bioF',
+         cat_2 = factor(cat_2, levels = unique(c(.$cat_2))),
+         Media ='LB/NGM')  %>% 
+  drop_na() 
+
+wtn_cat2 = cat2 %>% 
+  select(cat_2 = `Category 2`, Count, starts_with('WTN_')) %>% 
+  pivot_longer(cols = ends_with('_RGS'), names_to = 'RGS', values_to = 'RGS_counts') %>% 
+  pivot_longer(cols = ends_with('_Pvalue'), names_to = 'PValue_class', values_to = 'Pval') %>% 
+  filter(
+    (grepl('_UP', RGS) & grepl('_UP', PValue_class)) |
+      (grepl('_DOWN', RGS) & grepl('_DOWN', PValue_class)) # fixes weird stuff happening here
+  ) %>% 
+  arrange(cat_2) %>% 
+  mutate(RGS = case_when(grepl('_DOWN', RGS) ~ 'DOWN',
+                         grepl('_UP', RGS) ~ 'UP'),
+         Pval = as.numeric(Pval),
+         RGS_mod = RGS_counts * Pval/Pval, # trick to convert non-sig in NAs
+         log10pval = -log10(Pval),
+         Contrast = 'bioF',
+         cat_2 = factor(cat_2, levels = unique(c(.$cat_2))),
+         Media ='NGM')  %>% 
+  drop_na() 
+
+
+wt_cat2 %>% 
+  bind_rows(wtn_cat2) %>% 
+  mutate(category = 
+           cut(log10pval, 
+               breaks=c(-Inf, 10, 20, 30, Inf), 
+               labels=c("<10","10","20", '30'))) %>% 
+  filter(cat_2 != 'Unassigned') %>%
+  # filter(log10pval < -log10(0.05)) %>% 
+  ggplot(aes(x = RGS, y = cat_2)) +
+  geom_point(aes(size = log10pval, color = log10pval),
+             na.rm = TRUE) +
+  labs(x = 'Direction',
+       y = 'Categories') +
+  scale_y_discrete(limits = rev) +
+  scale_x_discrete(limits = rev) +
+  scale_color_viridis(option = 'inferno',
+                      name = '-log10(Pval)') +
+  scale_size_continuous(name = '-log10(Pval)') +
+  facet_wrap(~Media) +
+  theme_cowplot(15)
+
+ggsave('summary/Wormcat/WT_media.pdf', height = 11, width = 9)
+
+##### WT vs bioF #####
+
+bwt_cat2 = cat2 %>% 
+  select(cat_2 = `Category 2`, Count, starts_with('B_WT_')) %>% 
+  pivot_longer(cols = ends_with('_RGS'), names_to = 'RGS', values_to = 'RGS_counts') %>% 
+  pivot_longer(cols = ends_with('_Pvalue'), names_to = 'PValue_class', values_to = 'Pval') %>% 
+  filter(
+    (grepl('_UP', RGS) & grepl('_UP', PValue_class)) |
+      (grepl('_DOWN', RGS) & grepl('_DOWN', PValue_class)) # fixes weird stuff happening here
+  ) %>% 
+  arrange(cat_2) %>% 
+  mutate(RGS = case_when(grepl('_DOWN', RGS) ~ 'DOWN',
+                         grepl('_UP', RGS) ~ 'UP'),
+         Pval = as.numeric(Pval),
+         RGS_mod = RGS_counts * Pval/Pval, # trick to convert non-sig in NAs
+         log10pval = -log10(Pval),
+         Contrast = 'bioF',
+         cat_2 = factor(cat_2, levels = unique(c(.$cat_2))),
+         Media ='0 mM')  %>% 
+  drop_na() 
+
+bwt50_cat2 = cat2 %>% 
+  select(cat_2 = `Category 2`, Count, starts_with('B_WT50_')) %>% 
+  pivot_longer(cols = ends_with('_RGS'), names_to = 'RGS', values_to = 'RGS_counts') %>% 
+  pivot_longer(cols = ends_with('_Pvalue'), names_to = 'PValue_class', values_to = 'Pval') %>% 
+  filter(
+    (grepl('_UP', RGS) & grepl('_UP', PValue_class)) |
+      (grepl('_DOWN', RGS) & grepl('_DOWN', PValue_class)) # fixes weird stuff happening here
+  ) %>% 
+  arrange(cat_2) %>% 
+  mutate(RGS = case_when(grepl('_DOWN', RGS) ~ 'DOWN',
+                         grepl('_UP', RGS) ~ 'UP'),
+         Pval = as.numeric(Pval),
+         RGS_mod = RGS_counts * Pval/Pval, # trick to convert non-sig in NAs
+         log10pval = -log10(Pval),
+         Contrast = 'bioF',
+         cat_2 = factor(cat_2, levels = unique(c(.$cat_2))),
+         Media ='50 mM')  %>% 
+  drop_na() 
+
+
+bwt_cat2 %>% 
+  bind_rows(bwt50_cat2) %>% 
+  filter(cat_2 != 'Unassigned') %>%
+  # filter(log10pval < -log10(0.05)) %>% 
+  ggplot(aes(x = RGS, y = cat_2)) +
+  geom_point(aes(size = log10pval, color = log10pval),
+             na.rm = TRUE) +
+  labs(x = 'Direction',
+       y = 'Categories') +
+  scale_y_discrete(limits = rev) +
+  scale_x_discrete(limits = rev) +
+  scale_color_viridis(option = 'inferno',
+                      name = '-log10(Pval)') +
+  scale_size_continuous(name = '-log10(Pval)') +
+  facet_wrap(~Media) +
+  theme_cowplot(15)
+
+ggsave('summary/Wormcat/bioF_WT_metformin.pdf', height = 18, width = 10)
 
 
 
