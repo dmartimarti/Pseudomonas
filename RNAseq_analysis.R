@@ -162,7 +162,7 @@ gene_counts_norm = gene_counts_norm %>%
 write_csv(gene_counts_norm, here('summary', 'gene_counts_batch_normalized.csv'))
 
 
-
+gene_counts_norm %>% distinct(Sample)
 
 ### tidy results
 # dds.tidy = tidy(ddsTxi, colData = samples$Sample)
@@ -687,10 +687,12 @@ results.complete = res.WT.tidy %>% rbind(res.WTN.tidy,res.WTNmet_WT.tidy,
                                          res.Bmet_G.tidy, res.Bmet_WT.tidy,
                                          res.NGM.tidy, res.NGM_met.tidy)
 
-
+contrast_table = results.complete %>% 
+  distinct(Contrast_description, Contrast)
 
 # write results in excel files
-list_of_datasets = list('WT_LB/NGM' = res.WT.tidy, 
+list_of_datasets = list('COMPARISONS LIST' = contrast_table, 
+                        'WT_LB/NGM' = res.WT.tidy, 
                         'WT_NGM' = res.WTN.tidy, 
                         'WTNmet_WT' = res.WTNmet_WT.tidy,
                         'bioF_LB/NGM' = res.B.tidy,
@@ -711,8 +713,19 @@ write.xlsx(list_of_datasets, here('summary', 'complete_stats.xlsx'),
 write_csv(results.complete, here('summary', 'complete_stats.csv'))
 
 
+# save hits table for laziness
+filtered_list= list(
+  'COMPARISONS LIST' = contrast_table, 
+  'filtered_hits' = results.complete %>% 
+    filter(padj < 0.05, baseMean > 10)
+)  
 
-#### MA plots ####
+write.xlsx(list_of_datasets, here('summary', 'significant_stats.xlsx'),
+           colNames = T, rowNames = F, overwrite = TRUE)
+
+
+
+## MA plots ####
 
 
 ### MA plots for every comparison
