@@ -25,7 +25,8 @@ stats_int = read_csv('data/interaction_stats.csv')
 
 theme_set(theme_cowplot(15))
 
-
+data_groups = c('WT_0', 'WT_50', 'WTN_0', 'WTN_50',
+                'B_0', 'B_50', 'G_0', 'OP50')
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -36,6 +37,8 @@ ui <- fluidPage(
             selectizeInput('gene', choices = NULL, label = 'Gene',
                            multiple = TRUE, 
                            options = list(maxItems = 4, create = TRUE)),
+            selectizeInput('data_groups', label= 'Groups to plot',
+                        choices = data_groups, multiple = TRUE),
             sliderInput("height", label = "Plot height", 
                         min = 100, max = 900, value = 500),
             sliderInput("width", label = "Plot width", 
@@ -76,7 +79,10 @@ ui <- fluidPage(
                     br(),
                     br(),
                     br(),
-                    dataTableOutput("stats")
+                    dataTableOutput("stats"),
+                    downloadButton('downloadData', 'Download data'),
+                    # download button for plot in pdf
+                    downloadButton('downloadStats', 'Download stats')
                 ),
                 
                 tabPanel("Volcano plot",
@@ -120,6 +126,12 @@ server <- function(input, output, session) {
                          choices = unique(data_long$gene_name),
                          selected = 'argk-1',
                          server = TRUE)
+  
+    # update select size input for gene
+    updateSelectizeInput(session, 'data_groups', label = 'Groups to plot',
+                         choices = data_groups,
+                         selected = data_groups,
+                         server = TRUE)
     
     # update select size input for gene_int
     updateSelectizeInput(session, 'gene_int', label = 'Gene int',
@@ -133,12 +145,13 @@ server <- function(input, output, session) {
             mutate(Replicate = factor(Replicate,
                                       levels=c(1,2,3,4))) %>% 
             filter(gene_name %in% input$gene) %>%
+            filter(Sample %in% input$data_groups) %>% 
             ggplot(aes(y = counts, x = Sample)) +
             geom_boxplot(aes(fill = Sample),
                          outlier.shape = NA) +
             geom_point(position = position_jitter(width = 0.2),
                        aes(shape = Replicate)) +
-            facet_wrap(~gene_name, scales = 'free_y') +
+            facet_wrap(~gene_name*gene_id, scales = 'free_y') +
             labs(x = 'Sample',
                  y = 'Normalised counts') +
             theme_cowplot(15) +
@@ -262,7 +275,27 @@ server <- function(input, output, session) {
     output$stats = renderDataTable(stats_shiny %>% filter(gene_name %in% 
                                                              input$gene),
                                     options = list(pageLength = 20))
-}
+    
+    # create a button to download the data from the selected genes from data_long
+    output$downloadData = downloadHandler(
+        filename = function() {
+            paste('data-', Sys.Date(), '.csv', sep='')
+        },
+        content = function(file) {
+            write.csv(data_long %>% filter(gene_name %in% input$gene), file)
+        }
+    )
+    
+  # download the stats from the selected genes as a csv
+    output$downloadStats = downloadHandler(
+      filename = function() {
+        paste('stats-', Sys.Date(), '.csv', sep='')
+      },
+      content = function(file) {
+        write.csv(stats_shiny %>% filter(gene_name %in% input$gene), file)
+    })
+
+  }
 
 # Run the application 
 shinyApp(ui = ui, server = server)

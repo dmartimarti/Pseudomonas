@@ -27,6 +27,7 @@ library(openxlsx)
 library(viridis)
 library(cowplot)
 library(glue)
+library(extrafont)
 
 theme_set(theme_cowplot())
 
@@ -2374,4 +2375,287 @@ write.table(c('Wormbase ID', irg1_genes.like), 'irg1_like_genes.txt',
 
 
 
+
+
+# enrich balloon plots for Filipe -----------------------------------------
+
+library(readxl)
+enrich_GO  = read_excel("summary/Enrichment RNAseq GO function.xlsx") %>% 
+  mutate(enrich_direction = case_when(direction == "down" ~ -1 * enrichment,
+                                      TRUE ~ enrichment))
+
+enrich_GO$description %>% unique
+
+# classic stuff
+## go functions ----------------------
+
+enrich_GO %>% 
+  filter(category == "GO Function") %>% 
+  ggplot(aes(x = description, y = GO_term)) +
+  geom_point(aes(size = log10_FDR, color = enrich_direction)) +
+  theme_bw() +
+  scale_colour_gradient2() +
+  labs(x = NULL, y = NULL,
+       size = "-log10(FDR)",
+       color = "Enrichment\nstrenght",
+       title = "GO Function") +
+  scale_y_discrete(limits=rev) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 10))
+
+ggsave("summary/balloon_plots/go_func.pdf",
+       height = 9, width = 12)
+
+enrich_GO %>% 
+  filter(category == "GO Function") %>% 
+  filter(description != "Metf NGM") %>% 
+  ggplot(aes(x = description, y = GO_term)) +
+  geom_point(aes(size = log10_FDR, color = enrich_direction)) +
+  theme_bw() +
+  scale_colour_gradient2() +
+  labs(x = NULL, y = NULL,
+       size = "-log10(FDR)",
+       color = "Enrichment\nstrenght",
+       title = "GO Function") +
+  scale_y_discrete(limits=rev) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 10))
+
+ggsave("summary/balloon_plots/go_func_noNGM.pdf",
+       height = 9, width = 11)
+
+
+go_id = enrich_GO %>% 
+  filter(category == "GO Function") %>% 
+  count(GO_ID) %>% filter(n > 1) %>% pull(GO_ID)
+
+enrich_GO %>% 
+  filter(category == "GO Function") %>% 
+  filter(GO_ID %in% go_id) %>% 
+  ggplot(aes(x = description, y = GO_term)) +
+  geom_point(aes(size = log10_FDR, color = enrich_direction)) +
+  theme_bw() +
+  scale_colour_gradient2() +
+  labs(x = NULL, y = NULL,
+       size = "-log10(FDR)",
+       color = "Enrichment\nstrenght",
+       title = "GO Function") +
+  scale_y_discrete(limits=rev) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 10))
+
+ggsave("summary/balloon_plots/go_func_shared.pdf",
+       height = 7, width = 11)
+
+
+
+go_id = enrich_GO %>% 
+  filter(description != "Metf NGM") %>% 
+  filter(description != "Metf LB") %>% 
+  filter(category == "GO Function") %>% 
+  count(GO_ID) %>% filter(n > 1) %>% pull(GO_ID)
+
+# balloon plot with green and red colours
+enrich_GO %>% 
+  filter(category == "GO Function") %>% 
+  filter(description != "Metf NGM") %>% 
+  filter(description != "Metf LB") %>% 
+  filter(GO_ID %in% go_id) %>% 
+  ggplot(aes(x = description, y = GO_term)) +
+  geom_point(aes(size = log10_FDR, color = enrich_direction)) +
+  theme_bw() +
+  scale_colour_gradient2() +
+  labs(x = NULL, y = NULL,
+       size = "-log10(FDR)",
+       color = "Enrichment\nstrenght",
+       title = "GO Function") +
+  scale_y_discrete(limits=rev) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 10))
+
+ggsave("summary/balloon_plots/go_func_shared_noNGM.pdf",
+       height = 7, width = 11)
+
+
+
+## go Process ----------------------
+
+enrich_GO %>% 
+  filter(category == "GO Process") %>% 
+  ggplot(aes(x = description, y = GO_term)) +
+  geom_point(aes(size = log10_FDR, color = enrich_direction)) +
+  theme_bw() +
+  scale_colour_gradient2() +
+  labs(x = NULL, y = NULL,
+       size = "-log10(FDR)",
+       color = "Enrichment\nstrenght",
+       title = "GO Process") +
+  scale_y_discrete(limits=rev) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 10))
+
+ggsave("summary/balloon_plots/go_process.pdf",
+       height = 16, width = 12)
+
+enrich_GO %>% 
+  filter(category == "GO Process") %>% 
+  filter(description != "Metf NGM") %>% 
+  ggplot(aes(x = description, y = GO_term)) +
+  geom_point(aes(size = log10_FDR, color = enrich_direction)) +
+  theme_bw() +
+  scale_colour_gradient2() +
+  labs(x = NULL, y = NULL,
+       size = "-log10(FDR)",
+       color = "Enrichment\nstrenght",
+       title = "GO Process") +
+  scale_y_discrete(limits=rev) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 10))
+
+ggsave("summary/balloon_plots/go_process_noNGM.pdf",
+       height = 16, width = 11)
+
+
+go_id = enrich_GO %>% 
+  filter(category == "GO Process") %>% 
+  count(GO_ID) %>% filter(n > 1) %>% pull(GO_ID)
+
+enrich_GO %>% 
+  filter(category == "GO Process") %>% 
+  filter(GO_ID %in% go_id) %>% 
+  ggplot(aes(x = description, y = GO_term)) +
+  geom_point(aes(size = log10_FDR, color = enrich_direction)) +
+  theme_bw() +
+  scale_colour_gradient2() +
+  labs(x = NULL, y = NULL,
+       size = "-log10(FDR)",
+       color = "Enrichment\nstrenght",
+       title = "GO Process") +
+  scale_y_discrete(limits=rev) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 10))
+
+ggsave("summary/balloon_plots/go_process_shared.pdf",
+       height = 7, width = 11)
+
+
+
+go_id = enrich_GO %>% 
+  filter(description != "Metf NGM") %>% 
+  filter(category == "GO Process") %>% 
+  count(GO_ID) %>% filter(n > 1) %>% pull(GO_ID)
+enrich_GO %>% 
+  filter(description != "Metf NGM") %>% 
+  filter(category == "GO Process") %>% 
+  filter(GO_ID %in% go_id) %>% 
+  ggplot(aes(x = description, y = GO_term)) +
+  geom_point(aes(size = log10_FDR, color = enrich_direction)) +
+  theme_bw() +
+  scale_colour_gradient2() +
+  labs(x = NULL, y = NULL,
+       size = "-log10(FDR)",
+       color = "Enrichment\nstrenght",
+       title = "GO Process") +
+  scale_y_discrete(limits=rev) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 10))
+
+ggsave("summary/balloon_plots/go_process_shared_noNGM.pdf",
+       height = 7, width = 11)
+
+
+
+
+
+# selected boxplots -------------------------------------------------------
+
+genes = c("cnc-6","nlp-27","nlp-29","nlp-31","clec-52","lys-7","C14C6.5",
+          "C17H12.6","C18D11.6","C29F3.7","col-179","acdh-1",
+          "clec-160","ilys-5","F23C8.7","gst-24","drd-50",
+          "F55G11.4","lys-4","F59B1.8","H20E11.2","asp-14",
+          "dod-17","clec-150","cnc-2","cnc-4","nlp-33","T22B2.1",
+          "clec-218","grd-3", "argk-1")
+
+
+
+gene_counts %>%
+  dplyr::filter(gene_name %in% "nl-29") %>%
+  filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50', 'OP50')) %>%
+  mutate(Sample = str_replace_all(Sample, 'WT_0', 'LB/NGM'),
+         Sample = str_replace_all(Sample, 'WT_50', 'LB/NGM + Metf'),
+         Sample = str_replace_all(Sample, 'WTN_0', 'NGM'),
+         Sample = str_replace_all(Sample, 'WTN_50', 'NGM + Metf'),
+         Sample = str_replace_all(Sample, 'OP50', 'OP50')) %>%
+  mutate(Sample = factor(Sample, levels = c('LB/NGM', 'LB/NGM + Metf',
+                                            'NGM', 'NGM + Metf', 'OP50'))) %>%
+  ggplot(aes(y = counts, x = Sample)) +
+  geom_boxplot(aes(fill = Sample),
+               outlier.colour = NULL,
+               outlier.shape = NA) +
+  geom_point(position = position_jitter(width = 0.2)) +
+  facet_wrap(~gene_name, scales = 'free_y') +
+  scale_fill_manual(
+    values = c('LB/NGM' = '#E9724C', 
+               'LB/NGM + Metf' = '#C5283D', 
+               'NGM' = '#255F85', 
+               'NGM + Metf' = '#4E937A', 
+               'OP50' = 'grey'),
+  ) +
+  labs(x = 'Sample',
+       y = 'Normalised counts') +
+  theme_cowplot(15) +
+  panel_border() +
+  theme(axis.text.x = element_text(angle=45, hjust = 1))
+
+
+# create a function from the plot above where I can input any gene
+# and get the boxplot
+
+gene_boxplot = function(gene) {
+  gene_counts %>%
+    dplyr::filter(gene_name %in% gene) %>%
+    filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50', 'OP50')) %>%
+    mutate(Sample = str_replace_all(Sample, 'WT_0', 'LB/NGM'),
+           Sample = str_replace_all(Sample, 'WT_50', 'LB/NGM + Metf'),
+           Sample = str_replace_all(Sample, 'WTN_0', 'NGM'),
+           Sample = str_replace_all(Sample, 'WTN_50', 'NGM + Metf'),
+           Sample = str_replace_all(Sample, 'OP50', 'OP50')) %>%
+    mutate(Sample = factor(Sample, levels = c('LB/NGM', 'LB/NGM + Metf',
+                                              'NGM', 'NGM + Metf', 'OP50'))) %>%
+    ggplot(aes(y = counts, x = Sample)) +
+    geom_boxplot(aes(fill = Sample),
+                 show.legend = F,
+                 outlier.colour = NULL,
+                 outlier.shape = NA) +
+    geom_point(position = position_jitter(width = 0.2),
+               show.legend = F) +
+    facet_wrap(~gene_name, scales = 'free_y') +
+    scale_fill_manual(
+      values = c('LB/NGM' = '#E9724C', 
+                 'LB/NGM + Metf' = '#C5283D', 
+                 'NGM' = '#255F85', 
+                 'NGM + Metf' = '#4E937A', 
+                 'OP50' = 'grey'),
+    ) +
+    labs(x = 'Sample',
+         y = 'Normalised counts') +
+    theme_cowplot(15, font_family = "Arial") +
+    panel_border() +
+    theme(axis.text.x = element_text(angle=45, hjust = 1))
+  
+  ggsave(glue("summary/selected_boxplots/{gene}.pdf"),
+         height = 8, width = 9)
+}
+
+# gene_boxplot('argk-1')
+
+for (gene in genes) {
+  gene_boxplot(gene)
+}
+
+
+# save the data from these genes in a csv file
+gene_counts %>%
+  dplyr::filter(gene_name %in% genes) %>%
+  write_csv(here('summary', 'selected_boxplots', 'selected_genes.csv'))
 
