@@ -2611,8 +2611,10 @@ gene_counts %>%
 # create a function from the plot above where I can input any gene
 # and get the boxplot
 
-gene_boxplot = function(gene) {
-  gene_counts %>%
+gene_boxplot = function(gene,
+                        save.plot = FALSE,
+                        path = NULL) {
+  p1 = gene_counts %>%
     dplyr::filter(gene_name %in% gene) %>%
     filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50', 'OP50')) %>%
     mutate(Sample = str_replace_all(Sample, 'WT_0', 'LB/NGM'),
@@ -2643,11 +2645,15 @@ gene_boxplot = function(gene) {
     panel_border() +
     theme(axis.text.x = element_text(angle=45, hjust = 1))
   
-  ggsave(glue("summary/selected_boxplots/{gene}.pdf"),
-         height = 8, width = 9)
+  if (save.plot == TRUE){
+    ggsave(glue("{path}/{gene}.pdf"),
+           height = 8, width = 9)} 
+  else {
+    print(p1)
+  }
 }
 
-# gene_boxplot('argk-1')
+gene_boxplot('argk-1', save.plot = TRUE, path = './summary/')
 
 for (gene in genes) {
   gene_boxplot(gene)
@@ -2658,4 +2664,392 @@ for (gene in genes) {
 gene_counts %>%
   dplyr::filter(gene_name %in% genes) %>%
   write_csv(here('summary', 'selected_boxplots', 'selected_genes.csv'))
+
+
+
+gene_boxplot_all = function(gene,
+                        save.plot = FALSE,
+                        path = NULL) {
+  p1 = gene_counts %>%
+    dplyr::filter(gene_name %in% gene) %>%
+    filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50', 'OP50', 'B_0', 'B_50', 'G_0')) %>% 
+    # rename variables
+    mutate(Sample = str_replace(Sample, 'WT_0', 'LB/NGM'),
+           Sample = str_replace(Sample, 'WT_50', 'LB/NGM + Metf'),
+           Sample = str_replace(Sample, 'WTN_0', 'NGM'),
+           Sample = str_replace(Sample, 'WTN_50', 'NGM + Metf'),
+           Sample = str_replace(Sample, 'B_0', 'bioF'),
+           Sample = str_replace(Sample, 'B_50', 'bioF + Metf'),
+           Sample = str_replace(Sample, 'G_0', 'gacA'),
+           Sample = str_replace(Sample, 'OP50', 'OP50')) %>%
+    mutate(Sample = factor(Sample, levels = c('LB/NGM', 'LB/NGM + Metf',
+                                              'NGM', 'NGM + Metf',
+                                              'bioF', 'bioF + Metf',
+                                              'gacA', 'OP50'))) %>%
+    ggplot(aes(y = counts, x = Sample)) +
+    geom_boxplot(aes(fill = Sample),
+                 show.legend = F,
+                 outlier.colour = NULL,
+                 outlier.shape = NA) +
+    geom_point(position = position_jitter(width = 0.2),
+               show.legend = F) +
+    facet_wrap(~gene_name, scales = 'free_y') +
+    scale_fill_manual(
+      values = c('LB/NGM' = '#E9724C', 
+                 'LB/NGM + Metf' = '#C5283D', 
+                 'NGM' = '#255F85', 
+                 'NGM + Metf' = '#4E937A', 
+                 'bioF' = '#FFD700',
+                 'bioF + Metf' = '#FFA500',
+                 'gacA' = '#FF6347',
+                 'OP50' = 'grey'),
+    ) +
+    labs(x = 'Sample',
+         y = 'Normalised counts') +
+    theme_cowplot(15, font_family = "Arial") +
+    panel_border() +
+    theme(axis.text.x = element_text(angle=45, hjust = 1))
+  
+  if (save.plot == TRUE){
+    ggsave(glue("{path}/{gene}.pdf"),
+           height = 8, width = 9)} 
+  else {
+    print(p1)
+  }
+}
+
+gene_boxplot_all("flp-9")
+
+# cillium genes -----------------------------------------------------------
+
+
+cill_1 =c("osm-12", "che-12", "ift-74", "mks-2", "odr-3", "bbs-9", "tct-1", "arl-3", 
+          "bbs-2", "mks-3", "che-2", "tmem-107", "dyf-6", "K07C11.10", "dyf-5", 
+          "nphp-1", "nphp-4", "osm-6", "tmem-218", "tmem-231", "bbs-1", "rab-28", 
+          "osm-5", "cdkl-1", "dyf-2")
+
+
+cill_2 = c("nlp-34", "nlp-38", "nlp-76", "flp-4", "flp-4", "aexr-2", "flp-27", 
+  "flp-21", "nlp-35", "flp-9", "nmur-1", "nlp-15", "nlp-8", "nlp-13", 
+  "nlp-59", "gnrr-6", "nlp-55", "flp-16", "nlp-18", "flp-13", "nlp-47", 
+  "nlp-35", "nlp-49", "flp-11", "nlp-12", "nlp-66", "nlp-67", "nlp-45", "nlp-80",
+  "nlp-58", "ador-1", "nlp-2", "nlp-51", "npr-14", "flp-3", 
+  "nlp-53", "capa-1", "nlp-71")
+
+cill_3 = c("F31D4.9", "C33A12.1", "ucr-11", "nduo-1", "nduo-2", "ctb-1", "ctc-3", 
+           "nduo-4", "ctc-1", "nduo-6", "ctc-2", "nduo-3", "ndfl-4", "R07E4.3", 
+           "T27E9.2", "nduf-5", "Y54F10AM.5", "nuo-3", "Y63D3A.7", "C14B9.10")
+
+
+### cill_1 heatmap =============
+# make a heatmap with ComplexHeatmap for the genes in cill_1 from the 
+# dataframe gene_counts with genes as rows and Sample as columns, but calculate 
+# first the z-score per gene
+
+cill_1_data = gene_counts %>% 
+  filter(gene_name %in% cill_1) %>% 
+  filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50', 'OP50', 'B_0', 'B_50', 'G_0')) %>% 
+  # rename variables
+  mutate(Name = str_replace(Sample, 'WT_0', 'LB/NGM'),
+         Name = str_replace(Name, 'WT_50', 'LB/NGM + Metf'),
+         Name = str_replace(Name, 'WTN_0', 'NGM'),
+         Name = str_replace(Name, 'WTN_50', 'NGM + Metf'),
+         Name = str_replace(Name, 'B_0', 'bioF'),
+         Name = str_replace(Name, 'B_50', 'bioF + Metf'),
+         Name = str_replace(Name, 'G_0', 'gacA'),
+         Name = str_replace(Name, 'OP50', 'OP50')) %>%
+  unite(Name, Name, Replicate, sep = "_") %>%  
+  group_by(gene_name) %>% 
+  mutate(z_score = scale(counts)) %>% 
+  ungroup() %>% 
+  select(gene_name, Name, z_score) %>% 
+  pivot_wider(names_from = Name, values_from = z_score) %>% 
+  column_to_rownames(var = "gene_name")
+
+# plot with complexheatmap
+
+cill_1_data %>% as.matrix %>% 
+  ComplexHeatmap::Heatmap(column_title = "Sample",
+                           # column_title_gp = gpar(fontsize = 8),
+                           name = "z-score",
+                           row_title = "Gene",
+                           # row_title_gp = gpar(fontsize = 8),
+                           show_row_names = T,
+                           show_column_names = T,
+                           cluster_rows = T,
+                           cluster_columns = F,
+                           col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")))
+
+# save the plot as pdf
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'cillium_genes', 'cill_1_heatmap.pdf'),
+             height = 10, width = 12, useDingbats = FALSE)
+
+# save the data in a csv
+cill_1_data %>% 
+  as_tibble(rownames = "gene_name") %>%
+  write.xlsx(here('summary', 'cillium_genes', 'cill_1_zscores.xlsx'),
+             colNames = T, rowNames = F, overwrite = TRUE)
+# gene_boxplot("tct-1")
+
+### cill_2 heatmap =============
+
+cill_2_data = gene_counts %>% 
+  filter(gene_name %in% cill_2) %>% 
+  filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50', 'OP50', 'B_0', 'B_50', 'G_0')) %>% 
+  # rename variables
+  mutate(Name = str_replace(Sample, 'WT_0', 'LB/NGM'),
+         Name = str_replace(Name, 'WT_50', 'LB/NGM + Metf'),
+         Name = str_replace(Name, 'WTN_0', 'NGM'),
+         Name = str_replace(Name, 'WTN_50', 'NGM + Metf'),
+         Name = str_replace(Name, 'B_0', 'bioF'),
+         Name = str_replace(Name, 'B_50', 'bioF + Metf'),
+         Name = str_replace(Name, 'G_0', 'gacA'),
+         Name = str_replace(Name, 'OP50', 'OP50')) %>%
+  unite(Name, Name, Replicate, sep = "_") %>% 
+  group_by(gene_name) %>% 
+  mutate(z_score = scale(counts)) %>% 
+  ungroup() %>% 
+  select(gene_name, Name, z_score) %>% 
+  pivot_wider(names_from = Name, values_from = z_score) %>% 
+  column_to_rownames(var = "gene_name")
+
+# plot with complexheatmap
+
+cill_2_data %>% as.matrix %>% 
+  ComplexHeatmap::Heatmap(column_title = "Sample",
+                           # column_title_gp = gpar(fontsize = 8),
+                           name = "z-score",
+                           row_title = "Gene",
+                           # row_title_gp = gpar(fontsize = 8),
+                           show_row_names = T,
+                           show_column_names = T,
+                           cluster_rows = T,
+                           cluster_columns = F,
+                           col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")))
+# save the plot as pdf
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'cillium_genes', 'cill_2_heatmap.pdf'),
+             height = 10, width = 12, useDingbats = FALSE)
+
+# save the data in a xlsx file
+cill_2_data %>% 
+  as_tibble(rownames = "gene_name") %>%
+  write.xlsx(here('summary', 'cillium_genes', 'cill_2_zscores.xlsx'),
+             colNames = T, rowNames = F, overwrite = TRUE)
+
+
+### cill_3 heatmap =============
+cill_3_data = gene_counts %>% 
+  filter(gene_name %in% cill_3) %>% 
+  filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50', 'OP50', 'B_0', 'B_50', 'G_0')) %>% 
+  # rename variables
+  mutate(Name = str_replace(Sample, 'WT_0', 'LB/NGM'),
+         Name = str_replace(Name, 'WT_50', 'LB/NGM + Metf'),
+         Name = str_replace(Name, 'WTN_0', 'NGM'),
+         Name = str_replace(Name, 'WTN_50', 'NGM + Metf'),
+         Name = str_replace(Name, 'B_0', 'bioF'),
+         Name = str_replace(Name, 'B_50', 'bioF + Metf'),
+         Name = str_replace(Name, 'G_0', 'gacA'),
+         Name = str_replace(Name, 'OP50', 'OP50')) %>%
+  unite(Name, Name, Replicate, sep = "_") %>% 
+  group_by(gene_name) %>% 
+  mutate(z_score = scale(counts)) %>% 
+  ungroup() %>% 
+  select(gene_name, Name, z_score) %>% 
+  pivot_wider(names_from = Name, values_from = z_score) %>% 
+  column_to_rownames(var = "gene_name")
+
+
+# plot with complexheatmap
+
+cill_3_data %>% as.matrix %>% 
+  ComplexHeatmap::Heatmap(column_title = "Sample",
+                           # column_title_gp = gpar(fontsize = 8),
+                           name = "z-score",
+                           row_title = "Gene",
+                           # row_title_gp = gpar(fontsize = 8),
+                           show_row_names = T,
+                           show_column_names = T,
+                           cluster_rows = T,
+                           cluster_columns = F,
+                           col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")))
+
+# save the plot as pdf
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'cillium_genes', 'cill_3_heatmap.pdf'),
+             height = 10, width = 12, useDingbats = FALSE)
+
+# save the data in a xlsx file
+cill_3_data %>% 
+  as_tibble(rownames = "gene_name") %>%
+  write.xlsx(here('summary', 'cillium_genes', 'cill_3_zscores.xlsx'),
+             colNames = T, rowNames = F, overwrite = TRUE)
+
+gene_boxplot("flp-9")
+
+for (gene in cill_1) {
+  gene_boxplot_all(gene, save.plot = T, path = './summary/cillium_genes/boxplots/cill_1/')
+}
+
+for (gene in cill_2) {
+  gene_boxplot_all(gene, save.plot = T, path = './summary/cillium_genes/boxplots/cill_2/')
+}
+
+for (gene in cill_3) {
+  gene_boxplot_all(gene, save.plot = T, path = './summary/cillium_genes/boxplots/cill_3/')
+}
+
+
+
+# heatmaps with averages --------------------------------------------------
+
+
+### cill_1 heatmap =============
+# make a heatmap with ComplexHeatmap for the genes in cill_1 from the 
+# dataframe gene_counts with genes as rows and Sample as columns, but calculate 
+# first the z-score per gene
+
+cill_1_data = gene_counts %>% 
+  filter(gene_name %in% cill_1) %>% 
+  filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50', 'OP50', 'B_0', 'B_50', 'G_0')) %>% 
+  # rename variables
+  mutate(Name = str_replace(Sample, 'WT_0', 'LB/NGM'),
+         Name = str_replace(Name, 'WT_50', 'LB/NGM + Metf'),
+         Name = str_replace(Name, 'WTN_0', 'NGM'),
+         Name = str_replace(Name, 'WTN_50', 'NGM + Metf'),
+         Name = str_replace(Name, 'B_0', 'bioF'),
+         Name = str_replace(Name, 'B_50', 'bioF + Metf'),
+         Name = str_replace(Name, 'G_0', 'gacA'),
+         Name = str_replace(Name, 'OP50', 'OP50')) %>%
+  # unite(Name, Name, Replicate, sep = "_") %>%  
+  group_by(Name, gene_name) %>% 
+  summarise(counts = mean(counts)) %>%
+  group_by(gene_name) %>% 
+  mutate(z_score = scale(counts)) %>% 
+  ungroup() %>% 
+  select(gene_name, Name, z_score) %>% 
+  pivot_wider(names_from = Name, values_from = z_score) %>% 
+  column_to_rownames(var = "gene_name")
+
+# plot with complexheatmap
+
+cill_1_data %>% as.matrix %>% 
+  ComplexHeatmap::Heatmap(column_title = "Sample",
+                          # column_title_gp = gpar(fontsize = 8),
+                          name = "z-score",
+                          row_title = "Gene",
+                          # row_title_gp = gpar(fontsize = 8),
+                          show_row_names = T,
+                          show_column_names = T,
+                          cluster_rows = T,
+                          cluster_columns = F,
+                          col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")))
+
+# save the plot as pdf
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'cillium_genes', 'cill_1_heatmap_mean.pdf'),
+             height = 10, width = 12, useDingbats = FALSE)
+
+
+
+
+### cill_2 heatmap =============
+
+cill_2_data = gene_counts %>% 
+  filter(gene_name %in% cill_2) %>% 
+  filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50', 'OP50', 'B_0', 'B_50', 'G_0')) %>% 
+  # rename variables
+  mutate(Name = str_replace(Sample, 'WT_0', 'LB/NGM'),
+         Name = str_replace(Name, 'WT_50', 'LB/NGM + Metf'),
+         Name = str_replace(Name, 'WTN_0', 'NGM'),
+         Name = str_replace(Name, 'WTN_50', 'NGM + Metf'),
+         Name = str_replace(Name, 'B_0', 'bioF'),
+         Name = str_replace(Name, 'B_50', 'bioF + Metf'),
+         Name = str_replace(Name, 'G_0', 'gacA'),
+         Name = str_replace(Name, 'OP50', 'OP50')) %>%
+  # unite(Name, Name, Replicate, sep = "_") %>%  
+  group_by(Name, gene_name) %>% 
+  summarise(counts = mean(counts)) %>%
+  group_by(gene_name) %>% 
+  mutate(z_score = scale(counts)) %>% 
+  ungroup() %>% 
+  select(gene_name, Name, z_score) %>% 
+  pivot_wider(names_from = Name, values_from = z_score) %>% 
+  column_to_rownames(var = "gene_name")
+
+# plot with complexheatmap
+
+cill_2_data %>% as.matrix %>% 
+  ComplexHeatmap::Heatmap(column_title = "Sample",
+                          # column_title_gp = gpar(fontsize = 8),
+                          name = "z-score",
+                          row_title = "Gene",
+                          # row_title_gp = gpar(fontsize = 8),
+                          show_row_names = T,
+                          show_column_names = T,
+                          cluster_rows = T,
+                          cluster_columns = F,
+                          col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")))
+# save the plot as pdf
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'cillium_genes', 'cill_2_heatmap_mean.pdf'),
+             height = 10, width = 12, useDingbats = FALSE)
+
+
+
+
+
+### cill_3 heatmap =============
+cill_3_data = gene_counts %>% 
+  filter(gene_name %in% cill_3) %>% 
+  filter(Sample %in% c('WT_0','WT_50','WTN_0','WTN_50', 'OP50', 'B_0', 'B_50', 'G_0')) %>% 
+  # rename variables
+  mutate(Name = str_replace(Sample, 'WT_0', 'LB/NGM'),
+         Name = str_replace(Name, 'WT_50', 'LB/NGM + Metf'),
+         Name = str_replace(Name, 'WTN_0', 'NGM'),
+         Name = str_replace(Name, 'WTN_50', 'NGM + Metf'),
+         Name = str_replace(Name, 'B_0', 'bioF'),
+         Name = str_replace(Name, 'B_50', 'bioF + Metf'),
+         Name = str_replace(Name, 'G_0', 'gacA'),
+         Name = str_replace(Name, 'OP50', 'OP50')) %>%
+  # unite(Name, Name, Replicate, sep = "_") %>%  
+  group_by(Name, gene_name) %>% 
+  summarise(counts = mean(counts)) %>%
+  group_by(gene_name) %>% 
+  mutate(z_score = scale(counts)) %>% 
+  ungroup() %>% 
+  select(gene_name, Name, z_score) %>% 
+  pivot_wider(names_from = Name, values_from = z_score) %>% 
+  column_to_rownames(var = "gene_name")
+
+
+# plot with complexheatmap
+
+cill_3_data %>% as.matrix %>% 
+  ComplexHeatmap::Heatmap(column_title = "Sample",
+                          # column_title_gp = gpar(fontsize = 8),
+                          name = "z-score",
+                          row_title = "Gene",
+                          # row_title_gp = gpar(fontsize = 8),
+                          show_row_names = T,
+                          show_column_names = T,
+                          cluster_rows = T,
+                          cluster_columns = F,
+                          col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")))
+
+# save the plot as pdf
+dev.copy2pdf(device = cairo_pdf,
+             file = here('summary', 'cillium_genes', 'cill_3_heatmap_mean.pdf'),
+             height = 10, width = 12, useDingbats = FALSE)
+
+
+
+
+# merge the 3 cill datasets into one
+cill_data = bind_rows(cill_1_data %>% mutate(gene_name = rownames(cill_1_data)),
+                      cill_2_data %>% mutate(gene_name = rownames(cill_2_data)),
+                      cill_3_data %>% mutate(gene_name = rownames(cill_3_data))) 
+
+# plot a heatmap with the merged data
 
